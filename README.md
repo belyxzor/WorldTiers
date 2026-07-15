@@ -9,7 +9,8 @@ npm install
 npm run dev
 ```
 
-Le site écoute sur le réseau à l’adresse `http://IP_DU_SERVEUR:5173` et l’API sur `http://IP_DU_SERVEUR:3001`.
+Le site écoute sur le réseau à l’adresse `http://IP_DU_SERVEUR:5173` par défaut et l’API sur `http://IP_DU_SERVEUR:3001` par défaut.
+Vous pouvez remplacer le port de l’API avec `API_PORT` ou `PORT` si besoin.
 
 ## Production VPS
 

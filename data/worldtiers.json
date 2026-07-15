@@ -1,0 +1,22 @@
+{
+  "adminIps": [
+    "24.122.184.166",
+    "37.66.146.217"
+  ],
+  "players": [
+    {
+      "id": "3704be48-31b9-4d50-bfc4-41744054b05e",
+      "username": "belyxzor",
+      "minecraft_uuid": "63eb0378e1f44246bbde5ace333bcd71",
+      "region": "EU",
+      "retired": false,
+      "points": 63,
+      "created_at": "2026-07-15T20:10:53.647Z",
+      "tiers": {
+        "crystal": "HT1",
+        "axe": "LT4"
+      },
+      "history": []
+    }
+  ]
+}

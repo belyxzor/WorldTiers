@@ -1,0 +1,1 @@
+{"name":"worldtiers","version":"1.0.0","private":true,"license":"SEE LICENSE IN LICENSE.md","author":"Belyxzor","type":"module","scripts":{"dev":"node dev.js","api":"node server.js","build":"vite build","start":"node server.js"},"dependencies":{"@vitejs/plugin-react":"latest","react":"latest","react-dom":"latest","vite":"latest"}}

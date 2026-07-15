@@ -1,0 +1,1 @@
+import React from 'react';export function StatCard({label,value,accent}){return <article className="stat-card" style={{'--accent':accent}}><small>{label}</small><strong>{value}</strong><i/></article>}

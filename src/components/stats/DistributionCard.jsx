@@ -1,0 +1,3 @@
+import React from 'react';import {ModeIcon} from '../common/ModeIcon';
+const labels=['HT1','LT1','HT2','LT2','HT3','LT3','HT4','LT4','HT5','LT5'];
+export function DistributionCard({mode,values}){const total=values.reduce((a,b)=>a+b,0);return <article className="distribution-card"><header><ModeIcon mode={mode}/><div><b>{mode.name}</b><small>{total} joueurs</small></div></header><div className="distribution-values">{values.map((n,i)=><span key={labels[i]}><b>{n||'–'}</b><small>{labels[i]}</small></span>)}</div><footer><span><i className="dot active"/>Actifs</span><span><i className="dot retired"/>Retirés</span></footer></article>}

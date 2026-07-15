@@ -1,41 +1,287 @@
-import {createServer} from 'node:http';
-import {readFile,writeFile,mkdir,stat} from 'node:fs/promises';
-import {createReadStream} from 'node:fs';
-import {dirname,extname,join,normalize} from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {randomUUID} from 'node:crypto';
+import { createServer } from 'node:http';
+import { createReadStream } from 'node:fs';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { dirname, extname, join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 
-const root=dirname(fileURLToPath(import.meta.url));
-const dataFile=join(root,'data','worldtiers.json');
-const dist=join(root,'dist');
-const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.svg':'image/svg+xml','.jpg':'image/jpeg','.jpeg':'image/jpeg','.ico':'image/x-icon','.json':'application/json; charset=utf-8'};
-const send=(res,status,body,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',...headers});res.end(JSON.stringify(body))};
-const readDb=async()=>JSON.parse(await readFile(dataFile,'utf8'));
-const saveDb=async data=>{await mkdir(dirname(dataFile),{recursive:true});await writeFile(dataFile,JSON.stringify(data,null,2)+'\n')};
-const ipOf=req=>(req.headers['x-forwarded-for']?.split(',')[0].trim()||req.socket.remoteAddress||'').replace(/^::ffff:/,'');
-const isLocal=ip=>ip==='127.0.0.1'||ip==='::1';
-const validUsername=value=>/^[a-zA-Z0-9_]{3,16}$/.test(value);
-const validUuid=value=>/^[a-f0-9]{32}$/.test(value);
-const tierPoints={HT1:60,LT1:45,HT2:30,LT2:20,HT3:10,LT3:6,HT4:4,LT4:3,HT5:2,LT5:1};
-const updatePoints=player=>{player.points=Object.values(player.tiers||{}).reduce((total,tier)=>total+(tierPoints[tier]||0),0)};
-const modeIds=['crystal','sword','uhc','nethpot','pot','smp','axe','diasmp','mace','spear-mace'];
-const apiDocs={name:'WorldTiers API',version:'1.0.0',message:'Choisis une route dans cette liste.',endpoints:{health:'/api/health',players:'/api/players',top100:'/api/top100',stats:'/api/stats',modes:'/api/modes',player:'/api/user/:username',mode:'/api/:mode',modePlayer:'/api/:mode/user/:username',minecraftUuid:'/api/minecraft/:username'}};
-const cleanPlayer=player=>({id:player.id,username:player.username,minecraft_uuid:player.minecraft_uuid,skinHash:player.minecraft_uuid,region:player.region,points:player.points,retired:Boolean(player.retired),created_at:player.created_at,joinedAt:player.created_at,tiers:player.tiers||{},history:player.history||[]});
-const byPoints=(a,b)=>b.points-a.points||a.username.localeCompare(b.username);
-const byMode=mode=>(a,b)=>(tierPoints[b.tiers?.[mode]]||0)-(tierPoints[a.tiers?.[mode]]||0)||byPoints(a,b);
-const profile=(player,rank)=>({...cleanPlayer(player),...(rank?{rank}: {})});
-async function body(req){let text='';for await(const part of req){text+=part;if(text.length>1_000_000)throw new Error('Requête trop grande')}return text?JSON.parse(text):{}}
-async function admin(req,res){const db=await readDb();const ip=ipOf(req);if(!isLocal(ip)&&!db.adminIps.includes(ip))return send(res,403,{ok:false,error:`IP non autorisée : ${ip||'inconnue'}`});const payload=await body(req);const action=payload.action;
- if(action==='add_player'||action==='update_player'){const input=payload.player||{};const username=String(input.username||'').trim();const minecraft_uuid=String(input.minecraft_uuid||'').replaceAll('-','').trim().toLowerCase();if(!validUsername(username)||!validUuid(minecraft_uuid))return send(res,400,{ok:false,error:'Pseudo ou UUID invalide'});const duplicate=db.players.find(p=>(p.username.toLowerCase()===username.toLowerCase()||p.minecraft_uuid===minecraft_uuid)&&p.id!==payload.id);if(duplicate)return send(res,409,{ok:false,error:'Ce pseudo ou cet UUID existe déjà'});const values={username,minecraft_uuid,region:['EU','NA','AS','SA'].includes(input.region)?input.region:'EU',retired:Boolean(input.retired)};if(action==='add_player'){const player={id:randomUUID(),...values,points:0,created_at:new Date().toISOString(),tiers:{},history:[]};db.players.push(player);await saveDb(db);return send(res,201,{ok:true,id:player.id})}const player=db.players.find(p=>p.id===payload.id);if(!player)return send(res,404,{ok:false,error:'Profil introuvable'});Object.assign(player,values);updatePoints(player);await saveDb(db);return send(res,200,{ok:true,id:player.id})}
- const player=db.players.find(p=>p.id===payload.player_id||p.id===payload.id);if(action==='delete_player'){if(!player)return send(res,404,{ok:false,error:'Profil introuvable'});db.players=db.players.filter(p=>p.id!==player.id);await saveDb(db);return send(res,200,{ok:true})}
- if(action==='set_tier'||action==='remove_tier'){if(!player)return send(res,404,{ok:false,error:'Profil introuvable'});if(!/^[a-z-]{2,24}$/.test(String(payload.mode_id||'')))return send(res,400,{ok:false,error:'Mode invalide'});if(action==='remove_tier')delete player.tiers[payload.mode_id];else {const tier=String(payload.tier||'').split(' ')[0];if(!(tier in tierPoints))return send(res,400,{ok:false,error:'Tier invalide'});player.tiers[payload.mode_id]=tier}updatePoints(player);await saveDb(db);return send(res,200,{ok:true,points:player.points})}
- return send(res,400,{ok:false,error:'Action non autorisée'});
-}
-async function staticFile(req,res){let url=new URL(req.url,'http://localhost').pathname;if(url==='/api')return send(res,200,apiDocs);url=url==='/'?'/index.html':url;let path=normalize(join(dist,url));if(!path.startsWith(dist))return send(res,403,{error:'Interdit'});try{if((await stat(path)).isDirectory())path=join(dist,'index.html');res.writeHead(200,{'Content-Type':types[extname(path)]||'application/octet-stream'});createReadStream(path).pipe(res)}catch{try{const file=join(dist,'index.html');res.writeHead(200,{'Content-Type':types['.html']});createReadStream(file).pipe(res)}catch{send(res,503,{error:'Lance npm run build puis npm start.'})}}}
+const root = dirname(fileURLToPath(import.meta.url));
+const dataFile = join(root, 'data', 'worldtiers.json');
+const dist = join(root, 'dist');
 const port = Number(process.env.PORT || 3001);
-const server = createServer(async(req,res)=>{try{const pathname=new URL(req.url,'http://localhost').pathname,parts=pathname.split('/').filter(Boolean);if(req.method==='GET'&&pathname==='/api/health')return send(res,200,{ok:true,service:'WorldTiers API'});if(req.method==='GET'&&pathname==='/api/modes')return send(res,200,modeIds);const db=await readDb();const all=[...db.players].sort(byPoints);if(req.method==='GET'&&(pathname==='/api/players'||pathname==='/api/top100'))return send(res,200,all.slice(0,pathname==='/api/top100'?100:all.length).map((player,index)=>profile(player,index+1)));if(req.method==='GET'&&pathname==='/api/stats')return send(res,200,{players:all.length,activePlayers:all.filter(p=>!p.retired).length,totalPoints:all.reduce((total,p)=>total+p.points,0),modes:Object.fromEntries(modeIds.map(mode=>[mode,all.filter(p=>p.tiers?.[mode]).length]))});if(req.method==='GET'&&parts[0]==='api'&&parts[1]==='user'&&parts[2]){const player=all.find(p=>p.username.toLowerCase()===decodeURIComponent(parts[2]).toLowerCase());return player?send(res,200,profile(player,all.indexOf(player)+1)):send(res,404,{error:'Joueur introuvable'})}if(req.method==='GET'&&parts[0]==='api'&&modeIds.includes(parts[1])){const mode=parts[1],ranked=all.filter(p=>p.tiers?.[mode]).sort(byMode(mode));if(parts[2]==='user'&&parts[3]){const player=ranked.find(p=>p.username.toLowerCase()===decodeURIComponent(parts[3]).toLowerCase());return player?send(res,200,{...profile(player,ranked.indexOf(player)+1),mode,tier:player.tiers[mode],modePoints:tierPoints[player.tiers[mode]]}):send(res,404,{error:'Joueur non classé dans ce mode'})}return send(res,200,ranked.map((player,index)=>({...profile(player,index+1),mode,tier:player.tiers[mode],modePoints:tierPoints[player.tiers[mode]]})))}if(req.method==='GET'&&pathname.startsWith('/api/minecraft/')){const username=decodeURIComponent(pathname.slice('/api/minecraft/'.length));if(!validUsername(username))return send(res,400,{error:'Pseudo Minecraft invalide'});const response=await fetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(username)}`);if(response.status===204||response.status===404)return send(res,404,{error:'Pseudo Minecraft introuvable'});if(!response.ok)throw new Error('Mojang indisponible');const player=await response.json();return send(res,200,{username:player.name,uuid:player.id})}if(req.method==='POST'&&pathname==='/api/admin')return admin(req,res);return staticFile(req,res)}catch(error){console.error(error);send(res,500,{ok:false,error:'Erreur serveur'})}});
-server.listen(port,'0.0.0.0',()=>{
-  const actualPort = server.address().port;
-  console.log(`WorldTiers: http://localhost:${actualPort}`);
-});
+const mimeTypes = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.ico': 'image/x-icon',
+  '.json': 'application/json; charset=utf-8',
+};
 
+const tierPoints = { HT1: 60, LT1: 45, HT2: 30, LT2: 20, HT3: 10, LT3: 6, HT4: 4, LT4: 3, HT5: 2, LT5: 1 };
+const modes = [
+  ['crystal', 'Vanilla'], ['sword', 'Sword'], ['uhc', 'UHC'], ['nethpot', 'Neth Pot'], ['pot', 'Pot'],
+  ['smp', 'SMP'], ['axe', 'Axe'], ['diasmp', 'Dia SMP'], ['mace', 'Mace'], ['spear-mace', 'Spear Mace'],
+].map(([slug, name]) => ({ slug, name }));
+
+const getMode = (slug) => modes.find((mode) => mode.slug === slug);
+const validUsername = (value) => /^[a-zA-Z0-9_]{3,16}$/.test(value);
+const validUuid = (value) => /^[a-f0-9]{32}$/.test(value);
+const sortByPoints = (a, b) => b.points - a.points || a.username.localeCompare(b.username);
+const sortByMode = (mode) => (a, b) =>
+  (tierPoints[b.tiers?.[mode]] || 0) - (tierPoints[a.tiers?.[mode]] || 0) || sortByPoints(a, b);
+
+const apiDocs = {
+  name: 'WorldTiers API',
+  version: '1.0.0',
+  message: 'API publique WorldTiers : choisis une route ci-dessous.',
+  endpoints: {
+    health: '/api/health',
+    players: '/api/players',
+    top100: '/api/top100',
+    stats: '/api/stats',
+    modes: '/api/modes',
+    player: '/api/user/:username',
+    modeLeaderboard: '/api/:mode',
+    modePlayer: '/api/:mode/user/:username',
+    minecraftUuid: '/api/minecraft/:username',
+    v1Branding: '/api/v1/branding',
+    v1Modes: '/api/v1/modes',
+    v1Leaderboard: '/api/v1/leaderboard/:mode',
+  },
+};
+
+function sendJson(res, status, body, extraHeaders = {}) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'content-type',
+    ...extraHeaders,
+  });
+  res.end(status === 204 ? '' : JSON.stringify(body));
+}
+
+async function readDatabase() {
+  return JSON.parse(await readFile(dataFile, 'utf8'));
+}
+
+async function saveDatabase(database) {
+  await mkdir(dirname(dataFile), { recursive: true });
+  await writeFile(dataFile, `${JSON.stringify(database, null, 2)}\n`);
+}
+
+function refreshPoints(player) {
+  player.points = Object.values(player.tiers || {}).reduce((total, tier) => total + (tierPoints[tier] || 0), 0);
+}
+
+function publicPlayer(player) {
+  return {
+    id: player.id,
+    username: player.username,
+    minecraft_uuid: player.minecraft_uuid,
+    skinHash: player.minecraft_uuid,
+    region: player.region,
+    points: player.points,
+    retired: Boolean(player.retired),
+    created_at: player.created_at,
+    joinedAt: player.created_at,
+    tiers: player.tiers || {},
+    history: player.history || [],
+  };
+}
+
+function rankedPlayer(player, rank) {
+  return { ...publicPlayer(player), rank };
+}
+
+function clientIp(req) {
+  return (req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || '')
+    .replace(/^::ffff:/, '');
+}
+
+function isAllowedAdmin(ip, database) {
+  return ip === '127.0.0.1' || ip === '::1' || database.adminIps.includes(ip);
+}
+
+async function requestBody(req) {
+  let text = '';
+  for await (const chunk of req) {
+    text += chunk;
+    if (text.length > 1_000_000) throw new Error('Requête trop grande');
+  }
+  return text ? JSON.parse(text) : {};
+}
+
+async function handleAdmin(req, res) {
+  const database = await readDatabase();
+  const ip = clientIp(req);
+  if (!isAllowedAdmin(ip, database)) {
+    return sendJson(res, 403, { ok: false, error: `IP non autorisée : ${ip || 'inconnue'}` });
+  }
+
+  const payload = await requestBody(req);
+  const input = payload.player || {};
+
+  if (payload.action === 'add_player' || payload.action === 'update_player') {
+    const username = String(input.username || '').trim();
+    const minecraftUuid = String(input.minecraft_uuid || '').replaceAll('-', '').trim().toLowerCase();
+    if (!validUsername(username) || !validUuid(minecraftUuid)) {
+      return sendJson(res, 400, { ok: false, error: 'Pseudo ou UUID invalide' });
+    }
+    const duplicate = database.players.find((player) =>
+      (player.username.toLowerCase() === username.toLowerCase() || player.minecraft_uuid === minecraftUuid)
+      && player.id !== payload.id);
+    if (duplicate) return sendJson(res, 409, { ok: false, error: 'Ce pseudo ou cet UUID existe déjà' });
+
+    const values = {
+      username,
+      minecraft_uuid: minecraftUuid,
+      region: ['EU', 'NA', 'AS', 'SA'].includes(input.region) ? input.region : 'EU',
+      retired: Boolean(input.retired),
+    };
+    if (payload.action === 'add_player') {
+      const player = { id: randomUUID(), ...values, points: 0, created_at: new Date().toISOString(), tiers: {}, history: [] };
+      database.players.push(player);
+      await saveDatabase(database);
+      return sendJson(res, 201, { ok: true, id: player.id });
+    }
+
+    const player = database.players.find((item) => item.id === payload.id);
+    if (!player) return sendJson(res, 404, { ok: false, error: 'Profil introuvable' });
+    Object.assign(player, values);
+    refreshPoints(player);
+    await saveDatabase(database);
+    return sendJson(res, 200, { ok: true, id: player.id });
+  }
+
+  const player = database.players.find((item) => item.id === (payload.player_id || payload.id));
+  if (payload.action === 'delete_player') {
+    if (!player) return sendJson(res, 404, { ok: false, error: 'Profil introuvable' });
+    database.players = database.players.filter((item) => item.id !== player.id);
+    await saveDatabase(database);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (payload.action === 'set_tier' || payload.action === 'remove_tier') {
+    if (!player) return sendJson(res, 404, { ok: false, error: 'Profil introuvable' });
+    const mode = getMode(String(payload.mode_id || ''));
+    if (!mode) return sendJson(res, 400, { ok: false, error: 'Mode invalide' });
+    if (payload.action === 'remove_tier') {
+      delete player.tiers[mode.slug];
+    } else if (tierPoints[payload.tier]) {
+      player.tiers[mode.slug] = payload.tier;
+    } else {
+      return sendJson(res, 400, { ok: false, error: 'Tier invalide' });
+    }
+    refreshPoints(player);
+    await saveDatabase(database);
+    return sendJson(res, 200, { ok: true, points: player.points });
+  }
+
+  return sendJson(res, 400, { ok: false, error: 'Action non autorisée' });
+}
+
+async function fetchMinecraftUuid(res, username) {
+  if (!validUsername(username)) return sendJson(res, 400, { error: 'Pseudo Minecraft invalide' });
+  const response = await fetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(username)}`);
+  if (response.status === 204 || response.status === 404) return sendJson(res, 404, { error: 'Pseudo Minecraft introuvable' });
+  if (!response.ok) throw new Error('Mojang indisponible');
+  const player = await response.json();
+  return sendJson(res, 200, { username: player.name, uuid: player.id });
+}
+
+function modeResponse(player, rank, mode) {
+  const tier = player.tiers[mode.slug];
+  return { ...rankedPlayer(player, rank), mode, tier, modePoints: tierPoints[tier] };
+}
+
+async function handleApi(req, res, url) {
+  const { pathname } = url;
+  const parts = pathname.split('/').filter(Boolean);
+  if (req.method === 'OPTIONS') return sendJson(res, 204, {});
+  if (req.method === 'POST' && pathname === '/api/admin') return handleAdmin(req, res);
+  if (req.method !== 'GET') return sendJson(res, 405, { error: 'Méthode non autorisée' });
+
+  if (pathname === '/api') return sendJson(res, 200, apiDocs);
+  if (pathname === '/api/health') return sendJson(res, 200, { ok: true, service: 'WorldTiers API', version: '1.0.0' });
+  if (pathname === '/api/v1/branding') {
+    return sendJson(res, 200, {
+      name: 'WorldTiers', displayName: 'WorldTiers', website: `${url.protocol}//${url.host}`,
+      apiVersion: 'v1', logo: '/favicon.png', discord: null,
+    });
+  }
+  if (pathname === '/api/modes' || pathname === '/api/v1/modes') return sendJson(res, 200, modes);
+  if (parts[1] === 'minecraft' && parts[2]) return fetchMinecraftUuid(res, decodeURIComponent(parts[2]));
+
+  const database = await readDatabase();
+  const players = [...database.players].sort(sortByPoints);
+  if (pathname === '/api/players' || pathname === '/api/top100') {
+    const limit = pathname === '/api/top100' ? 100 : players.length;
+    return sendJson(res, 200, players.slice(0, limit).map((player, index) => rankedPlayer(player, index + 1)));
+  }
+  if (pathname === '/api/stats') {
+    return sendJson(res, 200, {
+      players: players.length,
+      activePlayers: players.filter((player) => !player.retired).length,
+      totalPoints: players.reduce((total, player) => total + player.points, 0),
+      modes: Object.fromEntries(modes.map((mode) => [mode.slug, players.filter((player) => player.tiers?.[mode.slug]).length])),
+    });
+  }
+
+  const isPlayerRoute = parts[1] === 'user' || (parts[1] === 'v1' && parts[2] === 'players');
+  if (isPlayerRoute) {
+    const requestedName = parts[1] === 'user' ? parts[2] : parts[3];
+    const player = players.find((item) => item.username.toLowerCase() === decodeURIComponent(requestedName || '').toLowerCase());
+    return player
+      ? sendJson(res, 200, rankedPlayer(player, players.indexOf(player) + 1))
+      : sendJson(res, 404, { error: 'Joueur introuvable' });
+  }
+
+  const leaderboardV1 = parts[1] === 'v1' && parts[2] === 'leaderboard';
+  const modeSlug = leaderboardV1 ? parts[3] : parts[1];
+  const mode = getMode(modeSlug);
+  if (!mode) return sendJson(res, 404, { error: 'Endpoint API introuvable', docs: '/api' });
+
+  const ranked = players.filter((player) => player.tiers?.[mode.slug]).sort(sortByMode(mode.slug));
+  const requestedName = !leaderboardV1 && parts[2] === 'user' ? parts[3] : null;
+  if (requestedName) {
+    const player = ranked.find((item) => item.username.toLowerCase() === decodeURIComponent(requestedName).toLowerCase());
+    return player
+      ? sendJson(res, 200, modeResponse(player, ranked.indexOf(player) + 1, mode))
+      : sendJson(res, 404, { error: 'Joueur non classé dans ce mode' });
+  }
+  return sendJson(res, 200, ranked.map((player, index) => modeResponse(player, index + 1, mode)));
+}
+
+async function serveStatic(req, res, url) {
+  let pathname = url.pathname === '/' ? '/index.html' : url.pathname;
+  let file = normalize(join(dist, pathname));
+  if (!file.startsWith(dist)) return sendJson(res, 403, { error: 'Interdit' });
+  try {
+    if ((await stat(file)).isDirectory()) file = join(dist, 'index.html');
+    res.writeHead(200, { 'Content-Type': mimeTypes[extname(file)] || 'application/octet-stream' });
+    createReadStream(file).pipe(res);
+  } catch {
+    try {
+      file = join(dist, 'index.html');
+      res.writeHead(200, { 'Content-Type': mimeTypes['.html'] });
+      createReadStream(file).pipe(res);
+    } catch {
+      sendJson(res, 503, { error: 'Lance npm run build puis npm start.' });
+    }
+  }
+}
+
+createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url, 'http://localhost');
+    if (url.pathname.startsWith('/api')) return handleApi(req, res, url);
+    return serveStatic(req, res, url);
+  } catch (error) {
+    console.error(error);
+    return sendJson(res, 500, { ok: false, error: 'Erreur serveur' });
+  }
+}).listen(port, '0.0.0.0', () => console.log(`WorldTiers: http://localhost:${port}`));

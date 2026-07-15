@@ -1,3 +1,0 @@
-export const GLOBAL_STATS={players:291,tests:688,passRate:86,activeModes:10,totalTests:538,passed:84,failed:22,cancelled:30,tierAssignments:1084,tierChanges:832,sanctions:1};
-export const TESTS_BY_MODE={crystal:124,sword:69,uhc:29,nethpot:60,pot:37,smp:61,axe:22,diasmp:113,mace:130,'spear-mace':43};
-export const DISTRIBUTIONS={crystal:[0,2,3,6,11,30,16,25,25,36],sword:[1,0,2,3,13,44,19,24,9,6],uhc:[1,0,0,3,6,21,13,17,17,9],nethpot:[1,2,1,3,9,27,10,13,13,11],pot:[1,1,1,0,4,19,9,8,5,2],smp:[2,3,2,6,7,23,13,21,22,18],axe:[1,1,0,1,5,22,20,30,12,9],diasmp:[2,0,3,5,15,25,11,27,33,28],mace:[1,2,6,3,9,36,26,44,22,11],'spear-mace':[1,1,2,3,5,10,8,6,4,3]};

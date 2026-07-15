@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Le site est sur `http://127.0.0.1:5173` et l’API sur `http://127.0.0.1:3001`.
+Le site écoute sur le réseau à l’adresse `http://IP_DU_SERVEUR:5173` et l’API sur `http://IP_DU_SERVEUR:3001`.
 
 ## Production VPS
 

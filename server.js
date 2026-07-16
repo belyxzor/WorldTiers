@@ -25,6 +25,7 @@ const mimeTypes = {
 };
 
 const tierPoints = { HT1: 60, LT1: 45, HT2: 30, LT2: 20, HT3: 10, LT3: 6, HT4: 4, LT4: 3, HT5: 2, LT5: 1 };
+const allowedRoles = new Set(['friend', 'tester']);
 const modes = [
   ['crystal', 'Vanilla'], ['sword', 'Sword'], ['uhc', 'UHC'], ['nethpot', 'Neth Pot'], ['pot', 'Pot'],
   ['smp', 'SMP'], ['axe', 'Axe'], ['diasmp', 'Dia SMP'], ['mace', 'Mace'], ['spear-mace', 'Spear Mace'],
@@ -98,6 +99,7 @@ function publicPlayer(player) {
     joinedAt: player.created_at,
     tiers: player.tiers || {},
     history: player.history || [],
+    roles: player.roles || [],
   };
 }
 
@@ -172,6 +174,7 @@ async function handleAdmin(req, res) {
       minecraft_uuid: minecraftUuid,
       region: ['EU', 'NA', 'AS', 'SA'].includes(input.region) ? input.region : 'EU',
       retired: Boolean(input.retired),
+      roles: Array.isArray(input.roles) ? [...new Set(input.roles.filter((role) => allowedRoles.has(role)))] : [],
     };
     if (payload.action === 'add_player') {
       const player = { id: randomUUID(), ...values, points: 0, created_at: new Date().toISOString(), tiers: {}, history: [] };

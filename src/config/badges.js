@@ -1,1 +1,0 @@
-export const BADGES={top1:{label:'Top 1',icon:'🏆',tone:'gold'},top2:{label:'Top 2',icon:'🥈',tone:'silver'},top3:{label:'Top 3',icon:'🥉',tone:'bronze'},top10:{label:'Top 10',icon:'✦',tone:'blue'},pioneer:{label:'Pionnier',icon:'✧',tone:'violet'}};

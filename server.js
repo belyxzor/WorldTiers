@@ -223,9 +223,11 @@ async function handleLinkConfirmation(req, res) {
   if (request.username.toLowerCase() !== username.toLowerCase()) return sendJson(res, 400, { ok: false, error: `Pseudo différent : le code est pour ${request.username}, mais Minecraft a envoyé ${username}.` });
   const player = database.players.find((item) => item.username.toLowerCase() === username.toLowerCase());
   if (!player) return sendJson(res, 400, { ok: false, error: 'Ce profil WorldTiers n’existe plus.' });
-  if (player.minecraft_uuid !== minecraftUuid) return sendJson(res, 400, { ok: false, error: 'UUID Minecraft différent : utilise le même compte Minecraft que celui enregistré sur WorldTiers.' });
+  // Offline/cracked servers and the Fabric dev client can expose a different local UUID.
+  // The short-lived Discord code still proves control of the Discord account and is bound to this exact username.
+  const uuidMatches = player.minecraft_uuid === minecraftUuid;
   database.discord_links = (database.discord_links || []).filter((item) => item.discord_id !== request.discord_id && item.username.toLowerCase() !== player.username.toLowerCase());
-  database.discord_links.push({ username: player.username, discord_id: request.discord_id, linked_at: new Date().toISOString() });
+  database.discord_links.push({ username: player.username, discord_id: request.discord_id, linked_at: new Date().toISOString(), uuid_verified: uuidMatches });
   database.link_requests = database.link_requests.filter((item) => item !== request);
   await saveDatabase(database);
   return sendJson(res, 200, { ok: true, username: player.username });

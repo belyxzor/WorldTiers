@@ -38,6 +38,12 @@ Le bot doit rester lancé en permanence, idéalement comme une deuxième applica
 ## Commandes
 
 - `/setup` : configure salons d'annonces, bienvenue, catégorie tickets et rôle staff.
+- `/testsetup` : configure le salon de file d'attente, la catégorie des tests et le rôle Discord Testeur.
+- `/link <pseudo>` : lie le Discord du joueur à son profil WorldTiers.
+- `/testermodes <modes>` : un testeur choisit les modes qu'il peut prendre.
+- `/tierrequest <mode>` : un joueur entre dans la file d'attente. Le testeur clique ensuite sur **Prendre le test** : un salon privé est créé automatiquement.
+- `/testaccept <tier>` et `/testreject <raison>` : finalisent le test. Une validation ajoute le tier et son historique sur le site.
+- `/rolesync` : synchronise le rôle Testeur Discord avec le profil WorldTiers lié. La synchronisation automatique tourne également toutes les deux minutes.
 - `/rank <joueur>`, `/profil <joueur>`, `/top [mode]` : données réelles de l'API WorldTiers.
 - `/ticket <sujet>` et `/close` : tickets privés.
 - `/announce <message>` : publication dans Discord et vers l'API du site.

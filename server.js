@@ -160,12 +160,35 @@ function hasBotSecret(req) {
   return Boolean(botApiSecret) && provided.length === botApiSecret.length && timingSafeEqual(Buffer.from(provided), Buffer.from(botApiSecret));
 }
 
-async function handleBotAnnouncement(req, res) {
+async function handleBotRequest(req, res, pathname) {
   if (!hasBotSecret(req)) return sendJson(res, 404, { error: 'Endpoint API introuvable' });
   const payload = await requestBody(req);
+  const database = await readDatabase();
+  if (pathname === '/api/bot/roles') {
+    const player = database.players.find((item) => item.username.toLowerCase() === String(payload.username || '').toLowerCase());
+    const role = String(payload.role || '');
+    if (!player || !allowedRoles.has(role)) return sendJson(res, 400, { ok: false, error: 'Joueur ou rôle invalide' });
+    const roles = new Set(player.roles || []);
+    if (payload.enabled) roles.add(role); else roles.delete(role);
+    player.roles = [...roles];
+    await saveDatabase(database);
+    return sendJson(res, 200, { ok: true, roles: player.roles });
+  }
+  if (pathname === '/api/bot/test-result') {
+    const player = database.players.find((item) => item.username.toLowerCase() === String(payload.username || '').toLowerCase());
+    const mode = getMode(String(payload.mode_id || ''));
+    const tier = String(payload.tier || '');
+    if (!player || !mode || !tierPoints[tier]) return sendJson(res, 400, { ok: false, error: 'Résultat de test invalide' });
+    player.tiers ||= {};
+    const previousTier = player.tiers[mode.slug] || null;
+    player.tiers[mode.slug] = tier;
+    if (previousTier !== tier) player.history = [{ id: randomUUID(), date: new Date().toISOString(), mode: mode.slug, from: previousTier, tier, action: 'tier_validated', author: String(payload.tester || 'Testeur Discord').slice(0, 80) }, ...(player.history || [])];
+    refreshPoints(player);
+    await saveDatabase(database);
+    return sendJson(res, 200, { ok: true, points: player.points });
+  }
   const message = String(payload.message || '').trim();
   if (!message || message.length > 500) return sendJson(res, 400, { ok: false, error: 'Annonce invalide' });
-  const database = await readDatabase();
   const author = String(payload.author || 'WorldTiers Discord').trim().slice(0, 80) || 'WorldTiers Discord';
   database.announcements = [{ id: randomUUID(), message, author, active: true, created_at: new Date().toISOString() }, ...(database.announcements || []).map((item) => ({ ...item, active: false }))];
   await saveDatabase(database);
@@ -300,7 +323,7 @@ async function handleApi(req, res, url) {
   const parts = pathname.split('/').filter(Boolean);
   if (req.method === 'OPTIONS') return sendJson(res, 204, {});
   if (req.method === 'POST' && pathname === '/api/admin/login') return handleAdminLogin(req, res);
-  if (req.method === 'POST' && pathname === '/api/bot/announcement') return handleBotAnnouncement(req, res);
+  if (req.method === 'POST' && ['/api/bot/announcement', '/api/bot/roles', '/api/bot/test-result'].includes(pathname)) return handleBotRequest(req, res, pathname);
   if (pathname === '/api/admin') {
     if (req.method === 'POST') return handleAdmin(req, res);
     if (req.method === 'GET') return handleAdminAccess(req, res);

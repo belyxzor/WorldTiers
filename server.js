@@ -132,7 +132,8 @@ async function handleAdminLogin(req, res) {
   if (!adminPassword || password.length !== adminPassword.length || !timingSafeEqual(Buffer.from(password), Buffer.from(adminPassword))) {
     return sendJson(res, 404, { error: 'Endpoint API introuvable' });
   }
-  return sendJson(res, 200, { ok: true }, { 'Set-Cookie': `wt_admin=${signedSession()}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=43200` });
+  const secure = req.headers['x-forwarded-proto'] === 'https' || Boolean(req.socket.encrypted);
+  return sendJson(res, 200, { ok: true }, { 'Set-Cookie': `wt_admin=${signedSession()}; Path=/; HttpOnly; SameSite=Strict;${secure ? ' Secure;' : ''} Max-Age=43200` });
 }
 
 function handleAdminAccess(req, res) {

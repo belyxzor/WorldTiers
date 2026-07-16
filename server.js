@@ -1,12 +1,13 @@
 import { createServer } from 'node:http';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { dirname, extname, join, normalize } from 'node:path';
+import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { dirname, extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 const root = dirname(fileURLToPath(import.meta.url));
-const dataFile = join(root, 'data', 'worldtiers.json');
+const dataFile = process.env.WORLDTIERS_DATA_FILE ? resolve(process.env.WORLDTIERS_DATA_FILE) : join(root, 'data', 'worldtiers.json');
+const dataBackupFile = `${dataFile}.backup`;
 const dist = join(root, 'dist');
 const port = Number(process.env.PORT || 3001);
 const adminPassword = process.env.ADMIN_PASSWORD || '';
@@ -67,11 +68,16 @@ function sendJson(res, status, body, extraHeaders = {}) {
 }
 
 async function readDatabase() {
-  return JSON.parse(await readFile(dataFile, 'utf8'));
+  try {
+    return JSON.parse(await readFile(dataFile, 'utf8'));
+  } catch {
+    return JSON.parse(await readFile(dataBackupFile, 'utf8'));
+  }
 }
 
 async function saveDatabase(database) {
   await mkdir(dirname(dataFile), { recursive: true });
+  try { await copyFile(dataFile, dataBackupFile); } catch {}
   await writeFile(dataFile, `${JSON.stringify(database, null, 2)}\n`);
 }
 

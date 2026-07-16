@@ -13,6 +13,7 @@ const dist = join(root, 'dist');
 const port = Number(process.env.PORT || 3001);
 const adminPassword = process.env.ADMIN_PASSWORD || '';
 const adminSessionSecret = process.env.ADMIN_SESSION_SECRET || adminPassword;
+const adminSessionVersion = randomUUID();
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -117,16 +118,16 @@ function readCookie(req, name) {
 
 function signedSession() {
   const expires = Date.now() + 1000 * 60 * 60 * 12;
-  const payload = String(expires);
+  const payload = `${adminSessionVersion}.${expires}`;
   const signature = createHmac('sha256', adminSessionSecret).update(payload).digest('hex');
   return `${payload}.${signature}`;
 }
 
 function hasAdminSession(req) {
   if (!adminPassword || !adminSessionSecret) return false;
-  const [expires, signature] = readCookie(req, 'wt_admin').split('.');
-  if (!expires || !signature || Number(expires) < Date.now()) return false;
-  const expected = createHmac('sha256', adminSessionSecret).update(expires).digest('hex');
+  const [version, expires, signature] = readCookie(req, 'wt_admin').split('.');
+  if (!version || version !== adminSessionVersion || !expires || !signature || Number(expires) < Date.now()) return false;
+  const expected = createHmac('sha256', adminSessionSecret).update(`${version}.${expires}`).digest('hex');
   return signature.length === expected.length && timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 

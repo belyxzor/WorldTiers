@@ -25,7 +25,7 @@ const mimeTypes = {
 };
 
 const tierPoints = { HT1: 60, LT1: 45, HT2: 30, LT2: 20, HT3: 10, LT3: 6, HT4: 4, LT4: 3, HT5: 2, LT5: 1 };
-const allowedRoles = new Set(['friend', 'tester']);
+const allowedRoles = new Set(['friend', 'tester', 'goat', 'verified', 'media']);
 const modes = [
   ['crystal', 'Vanilla'], ['sword', 'Sword'], ['uhc', 'UHC'], ['nethpot', 'Neth Pot'], ['pot', 'Pot'],
   ['smp', 'SMP'], ['axe', 'Axe'], ['diasmp', 'Dia SMP'], ['mace', 'Mace'], ['spear-mace', 'Spear Mace'],

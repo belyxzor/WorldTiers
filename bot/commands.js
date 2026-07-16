@@ -8,6 +8,7 @@ export const commands=[
  new SlashCommandBuilder().setName('close').setDescription('Fermer ce ticket'),
  new SlashCommandBuilder().setName('link').setDescription('Lier ton Discord à ton profil Minecraft').addStringOption(o=>o.setName('joueur').setDescription('Pseudo WorldTiers').setRequired(true)),
  new SlashCommandBuilder().setName('testermodes').setDescription('Choisir les modes que tu peux tester').addStringOption(o=>o.setName('modes').setDescription('Ex. sword,mace,crystal').setRequired(true)),
+ new SlashCommandBuilder().setName('tierpanel').setDescription('Créer un panneau de file pour tes tests').addStringOption(o=>o.setName('modes').setDescription('Ex. mace,sword').setRequired(true)),
  new SlashCommandBuilder().setName('tierrequest').setDescription('Entrer dans la file pour un test de tier').addStringOption(o=>o.setName('mode').setDescription('Mode à tester').setRequired(true)),
  new SlashCommandBuilder().setName('testaccept').setDescription('Valider un tier dans un salon de test').addStringOption(o=>o.setName('tier').setDescription('HT1, LT1, HT2…').setRequired(true)),
  new SlashCommandBuilder().setName('testreject').setDescription('Refuser ou annuler un test').addStringOption(o=>o.setName('raison').setDescription('Raison').setRequired(true)),

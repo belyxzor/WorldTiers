@@ -119,7 +119,7 @@ async function handleAdmin(req, res) {
   const database = await readDatabase();
   const ip = clientIp(req);
   if (!isAllowedAdmin(ip, database)) {
-    return sendJson(res, 403, { ok: false, error: `IP non autorisée : ${ip || 'inconnue'}` });
+    return sendJson(res, 404, { error: 'Endpoint API introuvable' });
   }
 
   const payload = await requestBody(req);

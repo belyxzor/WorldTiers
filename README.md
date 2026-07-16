@@ -1,6 +1,6 @@
 # WorldTiers
 
-Classement PvP Minecraft avec API et panneau d’administration intégrés.
+Classement PvP Minecraft avec API publique intégrée.
 
 ## Développement
 

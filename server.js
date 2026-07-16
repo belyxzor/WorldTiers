@@ -8,6 +8,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 const root = dirname(fileURLToPath(import.meta.url));
 const dataFile = process.env.WORLDTIERS_DATA_FILE ? resolve(process.env.WORLDTIERS_DATA_FILE) : join(root, 'data', 'worldtiers.json');
 const dataBackupFile = `${dataFile}.backup`;
+let databaseCache = null;
 const dist = join(root, 'dist');
 const port = Number(process.env.PORT || 3001);
 const adminPassword = process.env.ADMIN_PASSWORD || '';
@@ -69,17 +70,20 @@ function sendJson(res, status, body, extraHeaders = {}) {
 }
 
 async function readDatabase() {
+  if (databaseCache) return databaseCache;
   try {
-    return JSON.parse(await readFile(dataFile, 'utf8'));
+    databaseCache = JSON.parse(await readFile(dataFile, 'utf8'));
   } catch {
-    return JSON.parse(await readFile(dataBackupFile, 'utf8'));
+    databaseCache = JSON.parse(await readFile(dataBackupFile, 'utf8'));
   }
+  return databaseCache;
 }
 
 async function saveDatabase(database) {
   await mkdir(dirname(dataFile), { recursive: true });
   try { await copyFile(dataFile, dataBackupFile); } catch {}
   await writeFile(dataFile, `${JSON.stringify(database, null, 2)}\n`);
+  databaseCache = database;
 }
 
 function refreshPoints(player) {

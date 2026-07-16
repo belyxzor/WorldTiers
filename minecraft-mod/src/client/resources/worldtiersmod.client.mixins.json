@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "fr.tear.worldtiersmod.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "PlayerListHudMixin",
+    "EntityRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

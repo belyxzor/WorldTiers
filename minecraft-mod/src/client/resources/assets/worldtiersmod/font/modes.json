@@ -1,0 +1,109 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/crystal.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE000"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/sword.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE001"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/uhc.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE002"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/nethpot.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE003"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/pot.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE004"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/smp.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE005"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/axe.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE006"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/diasmp.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE007"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/mace.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE008"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/spear-mace.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE009"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/helmet.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE00A"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/half_circle.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE00B"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/heart.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE00C"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/blue_sword.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE00D"]
+    },
+    {
+      "type": "bitmap",
+      "file": "worldtiersmod:font/modes/hexagon.png",
+      "ascent": 8,
+      "height": 10,
+      "chars": ["\uE00E"]
+    }
+  ]
+}

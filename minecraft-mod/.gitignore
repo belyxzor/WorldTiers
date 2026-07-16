@@ -1,0 +1,8 @@
+.gradle/
+build/
+out/
+bin/
+*.log
+*.class
+*.jar
+run/

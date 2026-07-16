@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "worldtiersmod",
+  "version": "${version}",
+  "name": "World Tiers",
+  "description": "Displays the highest tier of a player on WorldTiers.ddns.net next to their username in the tab list.",
+  "authors": [
+    "Celsius"
+  ],
+  "icon": "assets/worldtiersmod/icon.png",
+  "contact": {},
+  "license": "CC0-1.0",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "fr.tear.worldtiersmod.WorldTiersMod"
+    ],
+    "client": [
+      "fr.tear.worldtiersmod.WorldTiersModClient"
+    ]
+  },
+  "mixins": [
+    "worldtiersmod.mixins.json",
+    {
+      "config": "worldtiersmod.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~1.21.5",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

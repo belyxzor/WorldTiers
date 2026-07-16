@@ -172,7 +172,7 @@ async function handleBotRequest(req, res, pathname) {
     if (!player || !validDiscordId(discordId)) return sendJson(res, 400, { ok: false, error: 'Joueur ou compte Discord invalide' });
     const expiresAt = Date.now() + 1000 * 60 * 15;
     database.link_requests = (database.link_requests || []).filter((item) => item.expires_at > Date.now() && item.discord_id !== discordId);
-    const code = randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase();
+    const code = randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase();
     database.link_requests.push({ code, username: player.username, discord_id: discordId, expires_at: expiresAt });
     await saveDatabase(database);
     return sendJson(res, 200, { ok: true, code, expires_at: new Date(expiresAt).toISOString() });

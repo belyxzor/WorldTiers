@@ -40,7 +40,7 @@ Le bot doit rester lancé en permanence, idéalement comme une deuxième applica
 - `/setup` : configure salons d'annonces, bienvenue, catégorie tickets et rôle staff.
 - `/testconfig` : admin uniquement, configure la file d'attente, la catégorie des salons privés et le rôle Discord Testeur.
 - `/testsetup file:#salon mode:sword joueur:@joueur` : un testeur ajoute directement un joueur dans une file donnée.
-- `/link <pseudo>` : lie le Discord du joueur à son profil WorldTiers.
+- `/link <pseudo>` : génère un code temporaire. Le joueur doit confirmer dans Minecraft avec `/worldtiers link CODE` : personne ne peut donc lier le compte d’un autre joueur.
 - `/testermodes <modes>` : un testeur choisit les modes qu'il peut prendre.
 - `/tierrequest <mode>` : un joueur entre dans la file d'attente. Le testeur clique ensuite sur **Prendre le test** : un salon privé est créé automatiquement.
 - `/testaccept <tier>` et `/testreject <raison>` : finalisent le test. Une validation ajoute le tier et son historique sur le site.

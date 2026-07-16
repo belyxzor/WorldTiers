@@ -189,10 +189,11 @@ async function handleAdmin(req, res) {
       minecraft_uuid: minecraftUuid,
       region: ['EU', 'NA', 'AS', 'SA'].includes(input.region) ? input.region : 'EU',
       retired: Boolean(input.retired),
-      roles: Array.isArray(input.roles) ? [...new Set(input.roles.filter((role) => allowedRoles.has(role)))] : [],
     };
+    // The normal profile editor does not manage roles: never erase them while saving tiers or profile fields.
+    if (Array.isArray(input.roles)) values.roles = [...new Set(input.roles.filter((role) => allowedRoles.has(role)))];
     if (payload.action === 'add_player') {
-      const player = { id: randomUUID(), ...values, points: 0, created_at: new Date().toISOString(), tiers: {}, history: [] };
+      const player = { id: randomUUID(), ...values, roles: values.roles || [], points: 0, created_at: new Date().toISOString(), tiers: {}, history: [] };
       database.players.push(player);
       await saveDatabase(database);
       return sendJson(res, 201, { ok: true, id: player.id });

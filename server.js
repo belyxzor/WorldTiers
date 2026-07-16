@@ -71,8 +71,17 @@ async function readDatabase() {
 }
 
 async function saveDatabase(database) {
+  refreshRankHistory(database);
   await mkdir(dirname(dataFile), { recursive: true });
   await writeFile(dataFile, `${JSON.stringify(database, null, 2)}\n`);
+}
+
+function refreshRankHistory(database) {
+  [...database.players].sort(sortByPoints).forEach((player, index) => {
+    const rank = index + 1;
+    player.best_rank_ever = Math.min(player.best_rank_ever || rank, rank);
+    if (index < 100) player.pioneer = true;
+  });
 }
 
 function refreshPoints(player) {
@@ -92,11 +101,20 @@ function publicPlayer(player) {
     joinedAt: player.created_at,
     tiers: player.tiers || {},
     history: player.history || [],
+    best_rank_ever: player.best_rank_ever || null,
   };
 }
 
 function rankedPlayer(player, rank) {
-  return { ...publicPlayer(player), rank };
+  const best = Math.min(player.best_rank_ever || rank, rank);
+  const badges = [...(player.badges || [])];
+  if (best === 1) badges.push('top1');
+  else if (best === 2) badges.push('top2');
+  else if (best === 3) badges.push('top3');
+  if (rank <= 10) badges.push('top10');
+  if (player.pioneer || player.username.toLowerCase() === 'belyxzor') badges.push('pioneer');
+  if (player.username.toLowerCase() === 'belyxzor') badges.push('creator', 'developer');
+  return { ...publicPlayer(player), rank, badges: [...new Set(badges)] };
 }
 
 function readCookie(req, name) {

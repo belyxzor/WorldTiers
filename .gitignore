@@ -6,6 +6,7 @@ dist/
 *.log
 data/worldtiers.json
 data/worldtiers.json.backup
+data/discord-bot.json
 .DS_Store
 domain.html
 live.html

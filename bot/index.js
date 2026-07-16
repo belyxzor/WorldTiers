@@ -1,0 +1,29 @@
+import { Client, GatewayIntentBits, ChannelType, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root=dirname(dirname(fileURLToPath(import.meta.url))),file=join(root,'data','discord-bot.json');
+const api=(process.env.WORLDTIERS_API_URL||'https://worldtiers.ddns.net/api').replace(/\/$/,'');
+let settings={};try{settings=JSON.parse(await readFile(file,'utf8'))}catch{}
+const cfg=id=>(settings[id]||={}),save=async()=>{await mkdir(dirname(file),{recursive:true});await writeFile(file,JSON.stringify(settings,null,2));};
+const embed=(title,description,color=0x45b8ff)=>new EmbedBuilder().setColor(color).setTitle(title).setDescription(description).setTimestamp().setFooter({text:'WorldTiers'});
+const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers]});
+const modes=['crystal','sword','uhc','nethpot','pot','smp','axe','diasmp','mace','spear-mace'];
+client.once('ready',()=>console.log(`WorldTiers Bot connecté : ${client.user.tag}`));
+client.on('guildMemberAdd',async member=>{const id=cfg(member.guild.id).welcome;if(!id)return;const channel=await member.guild.channels.fetch(id).catch(()=>null);if(channel?.isTextBased())channel.send({embeds:[embed('Bienvenue !',`Bienvenue ${member} ! Utilise **/rank** pour voir les classements WorldTiers.`)]});});
+client.on('interactionCreate',async interaction=>{
+ if(!interaction.isChatInputCommand()||!interaction.guild)return;
+ const reply=payload=>interaction.reply({...payload,ephemeral:true}),config=cfg(interaction.guild.id);
+ try{
+  if(interaction.commandName==='setup'){config.announcements=interaction.options.getChannel('annonces',true).id;config.welcome=interaction.options.getChannel('bienvenue')?.id||null;config.tickets=interaction.options.getChannel('tickets')?.id||null;config.staff=interaction.options.getRole('staff')?.id||null;await save();return reply({embeds:[embed('Bot configuré','Les salons WorldTiers sont enregistrés.')]});}
+  if(['rank','profil'].includes(interaction.commandName)){const name=interaction.options.getString('joueur',true),r=await fetch(`${api}/user/${encodeURIComponent(name)}`),p=await r.json();if(!r.ok)return reply({content:'Joueur introuvable.'});const tiers=Object.entries(p.tiers||{}).map(([mode,tier])=>`• ${mode} : **${tier}**`).join('\n')||'Aucun tier validé.';return reply({embeds:[embed(`${p.username} · #${p.rank}`,`**${p.points} points** · ${p.region}\n${tiers}`).setURL(`${api.replace(/\/api$/,'')}/player/${encodeURIComponent(p.username)}`)]});}
+  if(interaction.commandName==='top'){const mode=(interaction.options.getString('mode')||'top100').toLowerCase();if(mode!=='top100'&&!modes.includes(mode))return reply({content:'Mode invalide.'});const r=await fetch(`${api}/${mode}`),players=await r.json();if(!r.ok)return reply({content:'Classement indisponible.'});return reply({embeds:[embed(`Top ${mode==='top100'?'global':mode}`,players.slice(0,10).map((p,i)=>`**${i+1}.** ${p.username} — ${p.points} pts`).join('\n')||'Aucun joueur classé.')]});}
+  if(interaction.commandName==='ticket'){const subject=interaction.options.getString('sujet',true),overwrites=[{id:interaction.guild.id,deny:[PermissionFlagsBits.ViewChannel]},{id:interaction.user.id,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]}];if(config.staff)overwrites.push({id:config.staff,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]});const channel=await interaction.guild.channels.create({name:`ticket-${interaction.user.username}`.toLowerCase().replace(/[^a-z0-9-]/g,''),type:ChannelType.GuildText,parent:config.tickets||undefined,permissionOverwrites:overwrites});await channel.send({embeds:[embed('Ticket WorldTiers',`Créé par ${interaction.user}\n**Sujet :** ${subject}`)]});return reply({content:`Ticket créé : ${channel}`});}
+  if(interaction.commandName==='close'){if(!interaction.channel?.name.startsWith('ticket-'))return reply({content:'Cette commande doit être utilisée dans un ticket.'});await reply({content:'Fermeture dans 5 secondes.'});return setTimeout(()=>interaction.channel.delete('Ticket fermé').catch(()=>{}),5000);}
+  if(interaction.commandName==='announce'){const message=interaction.options.getString('message',true),channel=config.announcements&&await interaction.guild.channels.fetch(config.announcements).catch(()=>null);if(!channel?.isTextBased())return reply({content:'Utilise /setup pour choisir le salon des annonces.'});await channel.send({embeds:[embed('Mise à jour WorldTiers',message)]});if(process.env.BOT_API_SECRET)await fetch(`${api}/bot/announcement`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${process.env.BOT_API_SECRET}`},body:JSON.stringify({message,author:interaction.user.username})});return reply({content:'Annonce publiée.'});}
+  if(['warn','kick','ban'].includes(interaction.commandName)){const user=interaction.options.getUser('membre',true),reason=interaction.options.getString('raison',true),member=await interaction.guild.members.fetch(user.id).catch(()=>null);if(interaction.commandName==='warn')return reply({embeds:[embed('Avertissement',`${user} — ${reason}`,0xf4b942)]});if(!member)return reply({content:'Membre introuvable.'});if(interaction.commandName==='kick')await member.kick(reason);else await member.ban({reason});return reply({embeds:[embed(interaction.commandName==='ban'?'Membre banni':'Membre expulsé',`${user} — ${reason}`,0xed4245)]});}
+ }catch(error){console.error(error);return reply({content:'Une erreur est survenue. Vérifie les permissions du bot.'});}
+});
+if(!process.env.DISCORD_TOKEN)throw new Error('DISCORD_TOKEN manquant dans .env');
+client.login(process.env.DISCORD_TOKEN);

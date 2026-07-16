@@ -13,6 +13,7 @@ const dist = join(root, 'dist');
 const port = Number(process.env.PORT || 3001);
 const adminPassword = process.env.ADMIN_PASSWORD || '';
 const adminSessionSecret = process.env.ADMIN_SESSION_SECRET || adminPassword;
+const botApiSecret = process.env.BOT_API_SECRET || '';
 const adminSessionVersion = randomUUID();
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -154,6 +155,23 @@ function handleAdminAccess(req, res) {
   return hasAdminSession(req) ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Endpoint API introuvable' });
 }
 
+function hasBotSecret(req) {
+  const provided = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  return Boolean(botApiSecret) && provided.length === botApiSecret.length && timingSafeEqual(Buffer.from(provided), Buffer.from(botApiSecret));
+}
+
+async function handleBotAnnouncement(req, res) {
+  if (!hasBotSecret(req)) return sendJson(res, 404, { error: 'Endpoint API introuvable' });
+  const payload = await requestBody(req);
+  const message = String(payload.message || '').trim();
+  if (!message || message.length > 500) return sendJson(res, 400, { ok: false, error: 'Annonce invalide' });
+  const database = await readDatabase();
+  const author = String(payload.author || 'WorldTiers Discord').trim().slice(0, 80) || 'WorldTiers Discord';
+  database.announcements = [{ id: randomUUID(), message, author, active: true, created_at: new Date().toISOString() }, ...(database.announcements || []).map((item) => ({ ...item, active: false }))];
+  await saveDatabase(database);
+  return sendJson(res, 200, { ok: true });
+}
+
 async function requestBody(req) {
   let text = '';
   for await (const chunk of req) {
@@ -282,6 +300,7 @@ async function handleApi(req, res, url) {
   const parts = pathname.split('/').filter(Boolean);
   if (req.method === 'OPTIONS') return sendJson(res, 204, {});
   if (req.method === 'POST' && pathname === '/api/admin/login') return handleAdminLogin(req, res);
+  if (req.method === 'POST' && pathname === '/api/bot/announcement') return handleBotAnnouncement(req, res);
   if (pathname === '/api/admin') {
     if (req.method === 'POST') return handleAdmin(req, res);
     if (req.method === 'GET') return handleAdminAccess(req, res);

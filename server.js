@@ -193,6 +193,12 @@ async function handleAdmin(req, res) {
   }
 
   const player = database.players.find((item) => item.id === (payload.player_id || payload.id));
+  if (payload.action === 'set_roles') {
+    if (!player) return sendJson(res, 404, { ok: false, error: 'Profil introuvable' });
+    player.roles = Array.isArray(payload.roles) ? [...new Set(payload.roles.filter((role) => allowedRoles.has(role)))] : [];
+    await saveDatabase(database);
+    return sendJson(res, 200, { ok: true, roles: player.roles });
+  }
   if (payload.action === 'delete_player') {
     if (!player) return sendJson(res, 404, { ok: false, error: 'Profil introuvable' });
     database.players = database.players.filter((item) => item.id !== player.id);

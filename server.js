@@ -107,13 +107,12 @@ function publicPlayer(player) {
 
 function rankedPlayer(player, rank) {
   const best = Math.min(player.best_rank_ever || rank, rank);
-  const badges = [...(player.badges || [])];
+  const badges = [];
   if (best === 1) badges.push('top1');
   else if (best === 2) badges.push('top2');
   else if (best === 3) badges.push('top3');
   if (rank <= 10) badges.push('top10');
   if (player.pioneer || player.username.toLowerCase() === 'belyxzor') badges.push('pioneer');
-  if (player.username.toLowerCase() === 'belyxzor') badges.push('creator', 'developer');
   return { ...publicPlayer(player), rank, badges: [...new Set(badges)] };
 }
 

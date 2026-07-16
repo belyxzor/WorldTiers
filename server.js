@@ -106,6 +106,14 @@ function isAllowedAdmin(ip, database) {
   return ip === '127.0.0.1' || ip === '::1' || database.adminIps.includes(ip);
 }
 
+async function handleAdminAccess(req, res) {
+  const database = await readDatabase();
+  if (!isAllowedAdmin(clientIp(req), database)) {
+    return sendJson(res, 404, { error: 'Endpoint API introuvable' });
+  }
+  return sendJson(res, 200, { ok: true });
+}
+
 async function requestBody(req) {
   let text = '';
   for await (const chunk of req) {
@@ -202,7 +210,10 @@ async function handleApi(req, res, url) {
   const { pathname } = url;
   const parts = pathname.split('/').filter(Boolean);
   if (req.method === 'OPTIONS') return sendJson(res, 204, {});
-  if (req.method === 'POST' && pathname === '/api/admin') return handleAdmin(req, res);
+  if (pathname === '/api/admin') {
+    if (req.method === 'POST') return handleAdmin(req, res);
+    if (req.method === 'GET') return handleAdminAccess(req, res);
+  }
   if (req.method !== 'GET') return sendJson(res, 405, { error: 'Méthode non autorisée' });
 
   if (pathname === '/api') return sendJson(res, 200, apiDocs);

@@ -180,6 +180,16 @@ async function handleBotRequest(req, res, pathname) {
   if (pathname === '/api/bot/links') {
     return sendJson(res, 200, { ok: true, links: (database.discord_links || []).map((item) => ({ username: item.username, discord_id: item.discord_id })) });
   }
+  if (pathname === '/api/bot/link/remove') {
+    const discordId = String(payload.discord_id || '').trim();
+    if (!validDiscordId(discordId)) return sendJson(res, 400, { ok: false, error: 'Compte Discord invalide' });
+    const previous = (database.discord_links || []).length;
+    database.discord_links = (database.discord_links || []).filter((item) => item.discord_id !== discordId);
+    database.link_requests = (database.link_requests || []).filter((item) => item.discord_id !== discordId);
+    if (database.discord_links.length === previous) return sendJson(res, 404, { ok: false, error: 'Ce compte n’est pas lié' });
+    await saveDatabase(database);
+    return sendJson(res, 200, { ok: true });
+  }
   if (pathname === '/api/bot/roles') {
     const player = database.players.find((item) => item.username.toLowerCase() === String(payload.username || '').toLowerCase());
     const role = String(payload.role || '');
@@ -362,7 +372,7 @@ async function handleApi(req, res, url) {
   if (req.method === 'OPTIONS') return sendJson(res, 204, {});
   if (req.method === 'POST' && pathname === '/api/admin/login') return handleAdminLogin(req, res);
   if (req.method === 'POST' && pathname === '/api/link/confirm') return handleLinkConfirmation(req, res);
-  if (req.method === 'POST' && ['/api/bot/announcement', '/api/bot/roles', '/api/bot/test-result', '/api/bot/link/start', '/api/bot/links'].includes(pathname)) return handleBotRequest(req, res, pathname);
+  if (req.method === 'POST' && ['/api/bot/announcement', '/api/bot/roles', '/api/bot/test-result', '/api/bot/link/start', '/api/bot/links', '/api/bot/link/remove'].includes(pathname)) return handleBotRequest(req, res, pathname);
   if (pathname === '/api/admin') {
     if (req.method === 'POST') return handleAdmin(req, res);
     if (req.method === 'GET') return handleAdminAccess(req, res);

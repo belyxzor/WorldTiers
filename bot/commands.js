@@ -7,6 +7,7 @@ export const commands=[
  new SlashCommandBuilder().setName('ticket').setDescription('Ouvrir un ticket staff').addStringOption(o=>o.setName('sujet').setDescription('Ta demande').setRequired(true)),
  new SlashCommandBuilder().setName('close').setDescription('Fermer ce ticket'),
  new SlashCommandBuilder().setName('link').setDescription('Lier ton Discord à ton profil Minecraft').addStringOption(o=>o.setName('joueur').setDescription('Pseudo WorldTiers').setRequired(true)),
+ new SlashCommandBuilder().setName('unlink').setDescription('Retirer la liaison Discord d’un joueur').setDefaultMemberPermissions(PermissionFlagsBits.Administrator).addUserOption(o=>o.setName('joueur').setDescription('Compte Discord à délier').setRequired(true)),
  new SlashCommandBuilder().setName('testermodes').setDescription('Choisir les modes que tu peux tester').addStringOption(o=>o.setName('modes').setDescription('Ex. sword,mace,crystal').setRequired(true)),
  new SlashCommandBuilder().setName('tierpanel').setDescription('Créer un panneau de file pour tes tests').addStringOption(o=>o.setName('modes').setDescription('Ex. mace,sword').setRequired(true)),
  new SlashCommandBuilder().setName('tierrequest').setDescription('Entrer dans la file pour un test de tier').addStringOption(o=>o.setName('mode').setDescription('Mode à tester').setRequired(true)),

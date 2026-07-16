@@ -43,6 +43,7 @@ const modes = [
 const getMode = (slug) => modes.find((mode) => mode.slug === slug);
 const validUsername = (value) => /^[a-zA-Z0-9_]{3,16}$/.test(value);
 const validUuid = (value) => /^[a-f0-9]{32}$/.test(value);
+const validDiscordId = (value) => /^\d{15,22}$/.test(value);
 const sortByPoints = (a, b) => b.points - a.points || a.username.localeCompare(b.username);
 const sortByMode = (mode) => (a, b) =>
   (tierPoints[b.tiers?.[mode]] || 0) - (tierPoints[a.tiers?.[mode]] || 0) || sortByPoints(a, b);
@@ -164,6 +165,21 @@ async function handleBotRequest(req, res, pathname) {
   if (!hasBotSecret(req)) return sendJson(res, 404, { error: 'Endpoint API introuvable' });
   const payload = await requestBody(req);
   const database = await readDatabase();
+  if (pathname === '/api/bot/link/start') {
+    const username = String(payload.username || '').trim();
+    const discordId = String(payload.discord_id || '').trim();
+    const player = database.players.find((item) => item.username.toLowerCase() === username.toLowerCase());
+    if (!player || !validDiscordId(discordId)) return sendJson(res, 400, { ok: false, error: 'Joueur ou compte Discord invalide' });
+    const expiresAt = Date.now() + 1000 * 60 * 15;
+    database.link_requests = (database.link_requests || []).filter((item) => item.expires_at > Date.now() && item.discord_id !== discordId);
+    const code = randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase();
+    database.link_requests.push({ code, username: player.username, discord_id: discordId, expires_at: expiresAt });
+    await saveDatabase(database);
+    return sendJson(res, 200, { ok: true, code, expires_at: new Date(expiresAt).toISOString() });
+  }
+  if (pathname === '/api/bot/links') {
+    return sendJson(res, 200, { ok: true, links: (database.discord_links || []).map((item) => ({ username: item.username, discord_id: item.discord_id })) });
+  }
   if (pathname === '/api/bot/roles') {
     const player = database.players.find((item) => item.username.toLowerCase() === String(payload.username || '').toLowerCase());
     const role = String(payload.role || '');
@@ -193,6 +209,23 @@ async function handleBotRequest(req, res, pathname) {
   database.announcements = [{ id: randomUUID(), message, author, active: true, created_at: new Date().toISOString() }, ...(database.announcements || []).map((item) => ({ ...item, active: false }))];
   await saveDatabase(database);
   return sendJson(res, 200, { ok: true });
+}
+
+async function handleLinkConfirmation(req, res) {
+  const payload = await requestBody(req);
+  const code = String(payload.code || '').trim().toUpperCase();
+  const username = String(payload.username || '').trim();
+  const minecraftUuid = String(payload.minecraft_uuid || '').replaceAll('-', '').trim().toLowerCase();
+  const database = await readDatabase();
+  database.link_requests = (database.link_requests || []).filter((item) => item.expires_at > Date.now());
+  const request = database.link_requests.find((item) => item.code === code && item.username.toLowerCase() === username.toLowerCase());
+  const player = database.players.find((item) => item.username.toLowerCase() === username.toLowerCase() && item.minecraft_uuid === minecraftUuid);
+  if (!request || !player) return sendJson(res, 400, { ok: false, error: 'Code invalide, expiré ou compte Minecraft différent' });
+  database.discord_links = (database.discord_links || []).filter((item) => item.discord_id !== request.discord_id && item.username.toLowerCase() !== player.username.toLowerCase());
+  database.discord_links.push({ username: player.username, discord_id: request.discord_id, linked_at: new Date().toISOString() });
+  database.link_requests = database.link_requests.filter((item) => item !== request);
+  await saveDatabase(database);
+  return sendJson(res, 200, { ok: true, username: player.username });
 }
 
 async function requestBody(req) {
@@ -323,7 +356,8 @@ async function handleApi(req, res, url) {
   const parts = pathname.split('/').filter(Boolean);
   if (req.method === 'OPTIONS') return sendJson(res, 204, {});
   if (req.method === 'POST' && pathname === '/api/admin/login') return handleAdminLogin(req, res);
-  if (req.method === 'POST' && ['/api/bot/announcement', '/api/bot/roles', '/api/bot/test-result'].includes(pathname)) return handleBotRequest(req, res, pathname);
+  if (req.method === 'POST' && pathname === '/api/link/confirm') return handleLinkConfirmation(req, res);
+  if (req.method === 'POST' && ['/api/bot/announcement', '/api/bot/roles', '/api/bot/test-result', '/api/bot/link/start', '/api/bot/links'].includes(pathname)) return handleBotRequest(req, res, pathname);
   if (pathname === '/api/admin') {
     if (req.method === 'POST') return handleAdmin(req, res);
     if (req.method === 'GET') return handleAdminAccess(req, res);
@@ -343,6 +377,10 @@ async function handleApi(req, res, url) {
 
   const database = await readDatabase();
   const players = [...database.players].sort(sortByPoints);
+  if (parts[1] === 'link' && parts[2] === 'status' && parts[3]) {
+    const username = decodeURIComponent(parts[3]);
+    return sendJson(res, 200, { linked: (database.discord_links || []).some((item) => item.username.toLowerCase() === username.toLowerCase()) });
+  }
   if (pathname === '/api/season') return sendJson(res, 200, database.season || defaultSeason);
   if (pathname === '/api/announcements/current') {
     const announcement = (database.announcements || []).find((item) => item.active);

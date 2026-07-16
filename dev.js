@@ -10,7 +10,7 @@ const findAvailablePort=async(port,max=port+20)=>{return new Promise((resolve,re
 const apiPort=await findAvailablePort(apiPortBase);
 if(apiPort!==apiPortBase)console.log(`Port ${apiPortBase} busy, using ${apiPort}`);
 const env={...process.env,PORT:String(apiPort),API_PORT:String(apiPort)};
-const api=spawn(process.execPath,[join(root,'server.js')],{stdio:'inherit',env});
+const api=spawn(process.execPath,[`--env-file-if-exists=${join(root,'.env')}`,join(root,'server.js')],{stdio:'inherit',env});
 const vite=spawn(process.execPath,[join(root,'node_modules','vite','bin','vite.js'),'--host',host],{stdio:'inherit',env});
 const close=()=>{api.kill();vite.kill();process.exit()};
 process.on('SIGINT',close);process.on('SIGTERM',close);

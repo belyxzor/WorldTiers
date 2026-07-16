@@ -1,4 +1,5 @@
 {
   "key.worldtiersmod.cycle_mode": "Changer le mode WorldTiers affiché",
-  "category.worldtiersmod": "WorldTiers Tier Tagger"
+  "key.worldtiersmod.open_menu": "Ouvrir le menu WorldTiers",
+  "category.worldtiersmod": "WorldTiers"
 }

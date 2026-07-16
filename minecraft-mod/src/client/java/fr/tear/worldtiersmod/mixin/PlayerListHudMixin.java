@@ -38,7 +38,7 @@ public class PlayerListHudMixin {
 
         UUID uuid = profile.id();
         String pseudo = profile.name();
-        CacheEntry cacheEntry = WorldTiersModClient.TIER_CACHE.getOrFetch(uuid, pseudo);
+        CacheEntry cacheEntry = WorldTiersModClient.TIER_CACHE.get(uuid);
 
         if (cacheEntry == null || cacheEntry.state != CacheEntry.State.LOADED) {
             return;

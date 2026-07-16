@@ -68,7 +68,20 @@ public final class TierTagFormatter {
             tag.append(Text.literal(" ").formatted(Formatting.RESET));
         }
 
-        tag.append(Text.literal(best.shortCode() + " ").formatted(color));
+        // Format unique WorldTiers : icône + tier | pseudo.
+        tag.append(Text.literal(best.shortCode() + " | ").formatted(color));
         return tag;
+    }
+
+    /** Texte de bouton avec le glyphe du mode dans la police WorldTiers. */
+    public static Text modeButtonLabel(String modeSlug, String label) {
+        Character iconChar = MODE_CHARS.get(modeSlug);
+        MutableText result = Text.empty();
+        if (iconChar != null) {
+            result.append(Text.literal(String.valueOf(iconChar))
+                    .setStyle(Style.EMPTY.withFont(MODES_FONT).withColor(Formatting.WHITE)));
+            result.append(Text.literal(" "));
+        }
+        return result.append(Text.literal(label));
     }
 }

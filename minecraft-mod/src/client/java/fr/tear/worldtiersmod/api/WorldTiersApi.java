@@ -58,6 +58,48 @@ public class WorldTiersApi {
                 });
     }
 
+    /** Profil public pour l'écran WorldTiers intégré au jeu. */
+    public CompletableFuture<JsonObject> fetchProfile(String pseudo) {
+        String url = BASE_URL + "/api/user/" + pseudo;
+        return httpClient.sendAsync(HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(8)).GET().build(), HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> response.statusCode() == 200 ? JsonParser.parseString(response.body()).getAsJsonObject() : null)
+                .exceptionally(error -> null);
+    }
+
+    /** Top public pour l'écran WorldTiers intégré au jeu. */
+    public CompletableFuture<JsonArray> fetchTopPlayers() {
+        String url = BASE_URL + "/api/top100";
+        return httpClient.sendAsync(HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(8)).GET().build(), HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> response.statusCode() == 200 ? JsonParser.parseString(response.body()).getAsJsonArray() : new JsonArray())
+                .exceptionally(error -> new JsonArray());
+    }
+
+    /** Vérifie si le compte Minecraft a confirmé sa liaison Discord. */
+    public CompletableFuture<Boolean> isDiscordLinked(String username) {
+        String url = BASE_URL + "/api/link/status/" + URLEncoder.encode(username, StandardCharsets.UTF_8);
+        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(8)).GET().build();
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).thenApply(response -> {
+            if (response.statusCode() != 200) return true;
+            try { return JsonParser.parseString(response.body()).getAsJsonObject().get("linked").getAsBoolean(); }
+            catch (Exception ignored) { return true; }
+        }).exceptionally(error -> true);
+    }
+
+    /** Confirme depuis Minecraft le code généré par le bot Discord. */
+    public CompletableFuture<Boolean> confirmDiscordLink(String code, String username, String minecraftUuid) {
+        JsonObject body = new JsonObject();
+        body.addProperty("code", code);
+        body.addProperty("username", username);
+        body.addProperty("minecraft_uuid", minecraftUuid.replace("-", ""));
+        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(BASE_URL + "/api/link/confirm"))
+                .timeout(Duration.ofSeconds(8)).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).thenApply(response -> {
+            try { return response.statusCode() == 200 && JsonParser.parseString(response.body()).getAsJsonObject().get("ok").getAsBoolean(); }
+            catch (Exception ignored) { return false; }
+        }).exceptionally(error -> false);
+    }
+
     /**
      * Placeholder method to fetch modes from WorldTiers API.
      * User will implement the actual logic.
@@ -199,30 +241,6 @@ public class WorldTiersApi {
     public CompletableFuture<byte[]> fetchIconBytes(String urlOrPath) {
         WorldTiersMod.LOGGER.warn("[WorldTiersApi] fetchIconBytes is a placeholder and needs implementation.");
         return CompletableFuture.completedFuture(null);
-    }
-
-    public CompletableFuture<Boolean> isDiscordLinked(String username) {
-        String url = BASE_URL + "/api/link/status/" + URLEncoder.encode(username, StandardCharsets.UTF_8);
-        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(8)).GET().build();
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).thenApply(response -> {
-            if (response.statusCode() != 200) return true;
-            try { return JsonParser.parseString(response.body()).getAsJsonObject().get("linked").getAsBoolean(); }
-            catch (Exception ignored) { return true; }
-        }).exceptionally(error -> true);
-    }
-
-    public CompletableFuture<Boolean> confirmDiscordLink(String code, String username, String minecraftUuid) {
-        JsonObject body = new JsonObject();
-        body.addProperty("code", code);
-        body.addProperty("username", username);
-        body.addProperty("minecraft_uuid", minecraftUuid.replace("-", ""));
-        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(BASE_URL + "/api/link/confirm"))
-                .timeout(Duration.ofSeconds(8)).header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).thenApply(response -> {
-            try { return response.statusCode() == 200 && JsonParser.parseString(response.body()).getAsJsonObject().get("ok").getAsBoolean(); }
-            catch (Exception ignored) { return false; }
-        }).exceptionally(error -> false);
     }
 
     private String resolveUrl(String urlOrPath) {

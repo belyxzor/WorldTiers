@@ -42,6 +42,24 @@ public class DisplayModeState {
         return modes.get(selectedIndex).name();
     }
 
+    public List<ModeInfo> availableModes() {
+        return List.copyOf(modes);
+    }
+
+    public void selectAuto() {
+        selectedIndex = -1;
+    }
+
+    public void selectMode(String slug) {
+        for (int index = 0; index < modes.size(); index++) {
+            if (modes.get(index).slug().equals(slug)) {
+                selectedIndex = index;
+                return;
+            }
+        }
+        selectedIndex = -1;
+    }
+
     /** Sélectionne le tier à afficher pour un joueur selon le mode actuellement choisi. */
     public PlayerTier select(List<PlayerTier> tiers) {
         if (selectedIndex < 0 || selectedIndex >= modes.size()) {

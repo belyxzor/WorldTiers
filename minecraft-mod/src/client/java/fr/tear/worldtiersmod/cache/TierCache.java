@@ -9,13 +9,10 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Cache en mémoire des tiers par joueur, avec déduplication des requêtes en vol
- * et expiration différenciée (positif vs négatif/erreur).
+ * Cache mémoire par joueur. L'API est appelée une seule fois à son arrivée sur
+ * le serveur ; l'entrée est retirée lorsqu'il part.
  */
 public class TierCache {
-
-    private static final long POSITIVE_TTL_MILLIS = 5 * 60 * 1000L;  // 5 minutes
-    private static final long NEGATIVE_TTL_MILLIS = 60 * 1000L;      // 1 minute
 
     private final WorldTiersApi api;
     private final Map<UUID, CacheEntry> cache = new ConcurrentHashMap<>();
@@ -24,36 +21,30 @@ public class TierCache {
         this.api = api;
     }
 
-    /**
-     * Retourne l'entrée actuellement en cache pour ce joueur (peut être en LOADING si
-     * c'est le tout premier appel), et déclenche une requête asynchrone si l'entrée est
-     * absente ou expirée. Ne bloque jamais le thread appelant.
-     */
-    public CacheEntry getOrFetch(UUID uuid, String pseudo) {
-        long now = System.currentTimeMillis();
-        CacheEntry entry = cache.get(uuid);
-
-        boolean needsFetch = entry == null
-                || (entry.state != CacheEntry.State.LOADING
-                && entry.isExpired(now, POSITIVE_TTL_MILLIS, NEGATIVE_TTL_MILLIS));
-
-        if (needsFetch) {
-            cache.put(uuid, new CacheEntry(CacheEntry.State.LOADING, List.of(), now));
-            api.fetchPlayerTiers(pseudo).thenAccept(tiers -> {
-                CacheEntry.State state = tiers.isEmpty()
-                        ? CacheEntry.State.NOT_RANKED
-                        : CacheEntry.State.LOADED;
-                cache.put(uuid, new CacheEntry(state, tiers, System.currentTimeMillis()));
-                WorldTiersMod.LOGGER.info(
-                        "[WorldTiers Tier Tagger] {} -> {} tier(s) trouvé(s) (état: {}).",
-                        uuid, tiers.size(), state);
-            });
+    /** Lance une seule requête API pour un joueur nouvellement détecté. */
+    public void fetchOnJoin(UUID uuid, String pseudo) {
+        CacheEntry loading = new CacheEntry(CacheEntry.State.LOADING, List.of(), System.currentTimeMillis());
+        if (cache.putIfAbsent(uuid, loading) != null) {
+            return;
         }
 
+        api.fetchPlayerTiers(pseudo).thenAccept(tiers -> {
+            CacheEntry.State state = tiers.isEmpty() ? CacheEntry.State.NOT_RANKED : CacheEntry.State.LOADED;
+            cache.put(uuid, new CacheEntry(state, tiers, System.currentTimeMillis()));
+            WorldTiersMod.LOGGER.info("[WorldTiers] {} -> {} tier(s), état {}", uuid, tiers.size(), state);
+        }).exceptionally(error -> {
+            cache.put(uuid, new CacheEntry(CacheEntry.State.ERROR, List.of(), System.currentTimeMillis()));
+            WorldTiersMod.LOGGER.warn("[WorldTiers] Échec API pour {} : {}", uuid, error.getMessage());
+            return null;
+        });
+    }
+
+    /** Retourne seulement le cache : aucun appel réseau depuis le rendu Tab. */
+    public CacheEntry get(UUID uuid) {
         return cache.get(uuid);
     }
 
-    public void invalidate(UUID uuid) {
+    public void remove(UUID uuid) {
         cache.remove(uuid);
     }
 

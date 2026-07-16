@@ -3,13 +3,14 @@ import { createReadStream } from 'node:fs';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const dataFile = join(root, 'data', 'worldtiers.json');
 const dist = join(root, 'dist');
 const port = Number(process.env.PORT || 3001);
-const builtInAdminIps = new Set(['77.111.246.28']);
+const adminPassword = process.env.ADMIN_PASSWORD || '';
+const adminSessionSecret = process.env.ADMIN_SESSION_SECRET || adminPassword;
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -98,21 +99,36 @@ function rankedPlayer(player, rank) {
   return { ...publicPlayer(player), rank };
 }
 
-function clientIp(req) {
-  return (req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || '')
-    .replace(/^::ffff:/, '');
+function readCookie(req, name) {
+  return (req.headers.cookie || '').split(';').map((value) => value.trim()).find((value) => value.startsWith(`${name}=`))?.slice(name.length + 1) || '';
 }
 
-function isAllowedAdmin(ip, database) {
-  return ip === '127.0.0.1' || ip === '::1' || builtInAdminIps.has(ip) || database.adminIps.includes(ip);
+function signedSession() {
+  const expires = Date.now() + 1000 * 60 * 60 * 12;
+  const payload = String(expires);
+  const signature = createHmac('sha256', adminSessionSecret).update(payload).digest('hex');
+  return `${payload}.${signature}`;
 }
 
-async function handleAdminAccess(req, res) {
-  const database = await readDatabase();
-  if (!isAllowedAdmin(clientIp(req), database)) {
+function hasAdminSession(req) {
+  if (!adminPassword || !adminSessionSecret) return false;
+  const [expires, signature] = readCookie(req, 'wt_admin').split('.');
+  if (!expires || !signature || Number(expires) < Date.now()) return false;
+  const expected = createHmac('sha256', adminSessionSecret).update(expires).digest('hex');
+  return signature.length === expected.length && timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+}
+
+async function handleAdminLogin(req, res) {
+  const payload = await requestBody(req);
+  const password = String(payload.password || '');
+  if (!adminPassword || password.length !== adminPassword.length || !timingSafeEqual(Buffer.from(password), Buffer.from(adminPassword))) {
     return sendJson(res, 404, { error: 'Endpoint API introuvable' });
   }
-  return sendJson(res, 200, { ok: true });
+  return sendJson(res, 200, { ok: true }, { 'Set-Cookie': `wt_admin=${signedSession()}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=43200` });
+}
+
+function handleAdminAccess(req, res) {
+  return hasAdminSession(req) ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Endpoint API introuvable' });
 }
 
 async function requestBody(req) {
@@ -125,11 +141,11 @@ async function requestBody(req) {
 }
 
 async function handleAdmin(req, res) {
-  const database = await readDatabase();
-  const ip = clientIp(req);
-  if (!isAllowedAdmin(ip, database)) {
+  if (!hasAdminSession(req)) {
     return sendJson(res, 404, { error: 'Endpoint API introuvable' });
   }
+
+  const database = await readDatabase();
 
   const payload = await requestBody(req);
   const input = payload.player || {};
@@ -211,6 +227,7 @@ async function handleApi(req, res, url) {
   const { pathname } = url;
   const parts = pathname.split('/').filter(Boolean);
   if (req.method === 'OPTIONS') return sendJson(res, 204, {});
+  if (req.method === 'POST' && pathname === '/api/admin/login') return handleAdminLogin(req, res);
   if (pathname === '/api/admin') {
     if (req.method === 'POST') return handleAdmin(req, res);
     if (req.method === 'GET') return handleAdminAccess(req, res);

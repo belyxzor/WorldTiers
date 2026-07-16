@@ -9,6 +9,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const dataFile = join(root, 'data', 'worldtiers.json');
 const dist = join(root, 'dist');
 const port = Number(process.env.PORT || 3001);
+const builtInAdminIps = new Set(['77.111.246.28']);
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -103,7 +104,7 @@ function clientIp(req) {
 }
 
 function isAllowedAdmin(ip, database) {
-  return ip === '127.0.0.1' || ip === '::1' || database.adminIps.includes(ip);
+  return ip === '127.0.0.1' || ip === '::1' || builtInAdminIps.has(ip) || database.adminIps.includes(ip);
 }
 
 async function handleAdminAccess(req, res) {

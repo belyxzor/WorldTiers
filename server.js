@@ -218,9 +218,12 @@ async function handleLinkConfirmation(req, res) {
   const minecraftUuid = String(payload.minecraft_uuid || '').replaceAll('-', '').trim().toLowerCase();
   const database = await readDatabase();
   database.link_requests = (database.link_requests || []).filter((item) => item.expires_at > Date.now());
-  const request = database.link_requests.find((item) => item.code === code && item.username.toLowerCase() === username.toLowerCase());
-  const player = database.players.find((item) => item.username.toLowerCase() === username.toLowerCase() && item.minecraft_uuid === minecraftUuid);
-  if (!request || !player) return sendJson(res, 400, { ok: false, error: 'Code invalide, expiré ou compte Minecraft différent' });
+  const request = database.link_requests.find((item) => item.code === code);
+  if (!request) return sendJson(res, 400, { ok: false, error: 'Code introuvable ou expiré : recommence /link sur Discord.' });
+  if (request.username.toLowerCase() !== username.toLowerCase()) return sendJson(res, 400, { ok: false, error: `Pseudo différent : le code est pour ${request.username}, mais Minecraft a envoyé ${username}.` });
+  const player = database.players.find((item) => item.username.toLowerCase() === username.toLowerCase());
+  if (!player) return sendJson(res, 400, { ok: false, error: 'Ce profil WorldTiers n’existe plus.' });
+  if (player.minecraft_uuid !== minecraftUuid) return sendJson(res, 400, { ok: false, error: 'UUID Minecraft différent : utilise le même compte Minecraft que celui enregistré sur WorldTiers.' });
   database.discord_links = (database.discord_links || []).filter((item) => item.discord_id !== request.discord_id && item.username.toLowerCase() !== player.username.toLowerCase());
   database.discord_links.push({ username: player.username, discord_id: request.discord_id, linked_at: new Date().toISOString() });
   database.link_requests = database.link_requests.filter((item) => item !== request);

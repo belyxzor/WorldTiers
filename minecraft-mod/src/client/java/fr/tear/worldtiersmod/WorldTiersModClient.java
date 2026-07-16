@@ -177,10 +177,10 @@ public class WorldTiersModClient implements ClientModInitializer {
         var client = net.minecraft.client.MinecraftClient.getInstance();
         if (client.player == null) return 0;
         String username = client.player.getName().getString();
-        API.confirmDiscordLink(code, username, client.player.getUuidAsString()).thenAccept(ok -> client.execute(() -> {
+        API.confirmDiscordLink(code, username, client.player.getUuidAsString()).thenAccept(error -> client.execute(() -> {
             if (client.player != null) client.player.sendMessage(
-                    Text.literal(ok ? "[WorldTiers] Compte Discord lié avec succès !" : "[WorldTiers] Code invalide ou expiré. Recommence avec /link sur Discord.")
-                            .formatted(ok ? Formatting.GREEN : Formatting.RED), false);
+                    Text.literal(error.isEmpty() ? "[WorldTiers] Compte Discord lié avec succès !" : "[WorldTiers] " + error)
+                            .formatted(error.isEmpty() ? Formatting.GREEN : Formatting.RED), false);
         }));
         return 1;
     }

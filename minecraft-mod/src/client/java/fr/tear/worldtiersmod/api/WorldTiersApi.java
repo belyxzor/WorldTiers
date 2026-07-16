@@ -86,7 +86,7 @@ public class WorldTiersApi {
     }
 
     /** Confirme depuis Minecraft le code généré par le bot Discord. */
-    public CompletableFuture<Boolean> confirmDiscordLink(String code, String username, String minecraftUuid) {
+    public CompletableFuture<String> confirmDiscordLink(String code, String username, String minecraftUuid) {
         JsonObject body = new JsonObject();
         body.addProperty("code", code);
         body.addProperty("username", username);
@@ -95,9 +95,11 @@ public class WorldTiersApi {
                 .timeout(Duration.ofSeconds(8)).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
         return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).thenApply(response -> {
-            try { return response.statusCode() == 200 && JsonParser.parseString(response.body()).getAsJsonObject().get("ok").getAsBoolean(); }
-            catch (Exception ignored) { return false; }
-        }).exceptionally(error -> false);
+            try {
+                JsonObject result = JsonParser.parseString(response.body()).getAsJsonObject();
+                return response.statusCode() == 200 && result.get("ok").getAsBoolean() ? "" : result.has("error") ? result.get("error").getAsString() : "Erreur de liaison inconnue.";
+            } catch (Exception ignored) { return "Réponse WorldTiers invalide."; }
+        }).exceptionally(error -> "Impossible de joindre WorldTiers.");
     }
 
     /**

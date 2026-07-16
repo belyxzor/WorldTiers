@@ -1,0 +1,11 @@
+import React,{useEffect,useState} from 'react';
+import {NotFoundPage} from './NotFoundPage';
+
+export function AnnouncementAdminPage({navigate}){
+ const [authorized,setAuthorized]=useState(null),[message,setMessage]=useState(''),[author,setAuthor]=useState('Staff WorldTiers'),[notice,setNotice]=useState(''),[saving,setSaving]=useState(false);
+ useEffect(()=>{fetch('/api/admin').then(response=>response.ok?response.json():null).then(data=>setAuthorized(Boolean(data?.ok))).catch(()=>setAuthorized(false));fetch('/api/announcements/current').then(response=>response.json()).then(data=>{if(data?.active){setMessage(data.message||'');setAuthor(data.author||'Staff WorldTiers')}}).catch(()=>{})},[]);
+ const save=async event=>{event.preventDefault();setSaving(true);setNotice('');try{const response=await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_announcement',message,author})}),data=await response.json();if(!response.ok)throw new Error(data.error||'Enregistrement impossible');setNotice('Annonce publiée : elle sera affichée sur le site.')}catch(error){setNotice(error.message)}finally{setSaving(false)}};
+ if(authorized===false)return <NotFoundPage navigate={navigate}/>;
+ if(authorized===null)return <main className="not-found"><small>CHARGEMENT</small><strong>…</strong></main>;
+ return <main className="admin-page"><header className="admin-head"><div><small>OUTIL STAFF</small><h1>Annonces WorldTiers</h1><p>Le message est affiché dans le popup de Bob sur le site.</p></div></header><section className="admin-card admin-editor" style={{maxWidth:760}}><form onSubmit={save} className="admin-form"><label>Nom affiché<input value={author} maxLength="80" onChange={event=>setAuthor(event.target.value)}/></label><label>Annonce<textarea value={message} maxLength="500" required rows="6" onChange={event=>setMessage(event.target.value)} placeholder="Ex. La saison PvP 1 commence aujourd’hui !"/></label><div className="admin-actions"><button className="primary" disabled={saving}>{saving?'Publication…':'Publier l’annonce'}</button><a className="admin-public-link" href="/">Voir le site ↗</a></div></form>{notice&&<p className="admin-notice">{notice}</p>}</section></main>
+}

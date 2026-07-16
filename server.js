@@ -28,6 +28,12 @@ const mimeTypes = {
 
 const tierPoints = { HT1: 60, LT1: 45, HT2: 30, LT2: 20, HT3: 10, LT3: 6, HT4: 4, LT4: 3, HT5: 2, LT5: 1 };
 const allowedRoles = new Set(['friend', 'tester', 'goat', 'verified', 'media']);
+const defaultSeason = { id: 'saison-1', name: 'Saison PvP 1', status: 'active', starts_at: '2026-07-01T00:00:00.000Z', ends_at: null };
+const fallbackAnnouncements = [
+  'Bienvenue sur WorldTiers ! Fais tes preuves et monte dans le classement.',
+  'Les points sont calculés automatiquement selon les tiers validés.',
+  'Retrouve ton profil, tes tiers et les classements de chaque mode ici.',
+];
 const modes = [
   ['crystal', 'Vanilla'], ['sword', 'Sword'], ['uhc', 'UHC'], ['nethpot', 'Neth Pot'], ['pot', 'Pot'],
   ['smp', 'SMP'], ['axe', 'Axe'], ['diasmp', 'Dia SMP'], ['mace', 'Mace'], ['spear-mace', 'Spear Mace'],
@@ -54,6 +60,9 @@ const apiDocs = {
     modeLeaderboard: '/api/:mode',
     modePlayer: '/api/:mode/user/:username',
     minecraftUuid: '/api/minecraft/:username',
+    export: '/api/export/players',
+    season: '/api/season',
+    announcement: '/api/announcements/current',
     v1Branding: '/api/v1/branding',
     v1Modes: '/api/v1/modes',
     v1Leaderboard: '/api/v1/leaderboard/:mode',
@@ -204,6 +213,21 @@ async function handleAdmin(req, res) {
     await saveDatabase(database);
     return sendJson(res, 200, { ok: true, roles: player.roles });
   }
+  if (payload.action === 'set_announcement') {
+    const message = String(payload.message || '').trim();
+    if (!message || message.length > 500) return sendJson(res, 400, { ok: false, error: 'Annonce invalide' });
+    const author = String(payload.author || 'Staff WorldTiers').trim().slice(0, 80) || 'Staff WorldTiers';
+    database.announcements = [{ id: randomUUID(), message, author, active: true, created_at: new Date().toISOString() }, ...(database.announcements || []).map((item) => ({ ...item, active: false }))];
+    await saveDatabase(database);
+    return sendJson(res, 200, { ok: true, announcement: database.announcements[0] });
+  }
+  if (payload.action === 'set_season') {
+    const name = String(payload.name || '').trim().slice(0, 80);
+    if (!name) return sendJson(res, 400, { ok: false, error: 'Nom de saison invalide' });
+    database.season = { ...defaultSeason, ...database.season, name, status: payload.status === 'finished' ? 'finished' : 'active', starts_at: payload.starts_at || database.season?.starts_at || new Date().toISOString(), ends_at: payload.ends_at || null };
+    await saveDatabase(database);
+    return sendJson(res, 200, { ok: true, season: database.season });
+  }
   if (payload.action === 'delete_player') {
     if (!player) return sendJson(res, 404, { ok: false, error: 'Profil introuvable' });
     database.players = database.players.filter((item) => item.id !== player.id);
@@ -215,12 +239,20 @@ async function handleAdmin(req, res) {
     if (!player) return sendJson(res, 404, { ok: false, error: 'Profil introuvable' });
     const mode = getMode(String(payload.mode_id || ''));
     if (!mode) return sendJson(res, 400, { ok: false, error: 'Mode invalide' });
+    const previousTier = player.tiers[mode.slug] || null;
     if (payload.action === 'remove_tier') {
       delete player.tiers[mode.slug];
     } else if (tierPoints[payload.tier]) {
       player.tiers[mode.slug] = payload.tier;
     } else {
       return sendJson(res, 400, { ok: false, error: 'Tier invalide' });
+    }
+    const nextTier = player.tiers[mode.slug] || null;
+    if (previousTier !== nextTier) {
+      player.history = [{
+        id: randomUUID(), date: new Date().toISOString(), mode: mode.slug, from: previousTier,
+        tier: nextTier, action: nextTier ? 'tier_updated' : 'tier_removed', author: 'Staff WorldTiers',
+      }, ...(player.history || [])];
     }
     refreshPoints(player);
     await saveDatabase(database);
@@ -268,6 +300,18 @@ async function handleApi(req, res, url) {
 
   const database = await readDatabase();
   const players = [...database.players].sort(sortByPoints);
+  if (pathname === '/api/season') return sendJson(res, 200, database.season || defaultSeason);
+  if (pathname === '/api/announcements/current') {
+    const announcement = (database.announcements || []).find((item) => item.active);
+    const fallback = fallbackAnnouncements[new Date().getDate() % fallbackAnnouncements.length];
+    return sendJson(res, 200, announcement || { id: 'bob-default', active: false, message: fallback, author: 'Bob', created_at: null });
+  }
+  if (pathname === '/api/export/players') {
+    return sendJson(res, 200, {
+      generated_at: new Date().toISOString(), season: database.season || defaultSeason,
+      total_players: players.length, players: players.map((player, index) => rankedPlayer(player, index + 1)),
+    });
+  }
   if (pathname === '/api/players' || pathname === '/api/top100') {
     const limit = pathname === '/api/top100' ? 100 : players.length;
     return sendJson(res, 200, players.slice(0, limit).map((player, index) => rankedPlayer(player, index + 1)));

@@ -3,12 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "main": "bot/index.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node bot/index.js",
-    "register": "node bot/register-commands.js"
+    "start": "node index.js",
+    "register": "node register-commands.js"
   },
   "dependencies": {
-    "discord.js": "^14.27.0"
+    "discord.js": "^14.27.0",
+    "typescript": "^5.7.3"
   }
 }

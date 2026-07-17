@@ -36,31 +36,55 @@ public class WorldTiersApi {
     };
 
     /**
-     * Fetches player tiers for all modes.
+     * Récupère le profil public WorldTiers en une seule requête.
+     * Un tag n'est créé que pour les tiers réellement présents dans le profil,
+     * jamais à partir d'une réponse d'un autre classement ou d'un cache externe.
      */
     public CompletableFuture<List<PlayerTier>> fetchPlayerTiers(String pseudo) {
-        List<CompletableFuture<List<PlayerTier>>> futures = new ArrayList<>();
-        for (String mode : MODES) {
-            futures.add(fetchTierForMode(mode, pseudo));
-        }
+        String encodedPseudo = URLEncoder.encode(pseudo, StandardCharsets.UTF_8);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(BASE_URL + "/api/user/" + encodedPseudo))
+                .timeout(Duration.ofSeconds(8))
+                .header("Accept", "application/json")
+                .GET()
+                .build();
 
-        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                .thenApply(v -> {
-                    List<PlayerTier> allTiers = new ArrayList<>();
-                    for (CompletableFuture<List<PlayerTier>> future : futures) {
-                        try {
-                            allTiers.addAll(future.join());
-                        } catch (Exception e) {
-                            WorldTiersMod.LOGGER.warn("[WorldTiersApi] Error joining future: {}", e.getMessage());
-                        }
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() == 404) return List.<PlayerTier>of();
+                    if (response.statusCode() != 200) {
+                        WorldTiersMod.LOGGER.warn("[WorldTiersApi] Réponse profil inattendue ({}) pour {}", response.statusCode(), pseudo);
+                        return List.<PlayerTier>of();
                     }
-                    return allTiers;
+                    try {
+                        JsonObject profile = JsonParser.parseString(response.body()).getAsJsonObject();
+                        if (!profile.has("tiers") || !profile.get("tiers").isJsonObject()) return List.<PlayerTier>of();
+
+                        boolean retired = profile.has("retired") && profile.get("retired").getAsBoolean();
+                        List<PlayerTier> result = new ArrayList<>();
+                        for (var entry : profile.getAsJsonObject("tiers").entrySet()) {
+                            String tier = entry.getValue().getAsString().toUpperCase();
+                            if (!tier.matches("(?:HT|LT)[1-5]")) continue;
+                            boolean high = tier.startsWith("HT");
+                            int level = Integer.parseInt(tier.substring(2));
+                            String mode = entry.getKey();
+                            result.add(new PlayerTier(level, high, retired, mode, mode));
+                        }
+                        return result;
+                    } catch (Exception error) {
+                        WorldTiersMod.LOGGER.warn("[WorldTiersApi] Profil invalide pour {} : {}", pseudo, error.getMessage());
+                        return List.<PlayerTier>of();
+                    }
+                })
+                .exceptionally(error -> {
+                    WorldTiersMod.LOGGER.warn("[WorldTiersApi] Impossible de récupérer le profil de {} : {}", pseudo, error.getMessage());
+                    return List.<PlayerTier>of();
                 });
     }
 
     /** Profil public pour l'écran WorldTiers intégré au jeu. */
     public CompletableFuture<JsonObject> fetchProfile(String pseudo) {
-        String url = BASE_URL + "/api/user/" + pseudo;
+        String url = BASE_URL + "/api/user/" + URLEncoder.encode(pseudo, StandardCharsets.UTF_8);
         return httpClient.sendAsync(HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(8)).GET().build(), HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> response.statusCode() == 200 ? JsonParser.parseString(response.body()).getAsJsonObject() : null)
                 .exceptionally(error -> null);

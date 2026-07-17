@@ -3,6 +3,10 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Node lancé par Pterodactyl/ts-node ne reçoit pas toujours --env-file.
+// Charge donc .env quand il est présent, sans écraser les vraies variables du panel.
+try { process.loadEnvFile?.('.env'); } catch {}
+
 const root=dirname(dirname(fileURLToPath(import.meta.url))),file=join(root,'data','discord-bot.json');
 const api=(process.env.WORLDTIERS_API_URL||'https://worldtiers.ddns.net/api').replace(/\/$/,'');
 const modes=['crystal','sword','uhc','nethpot','pot','smp','axe','diasmp','mace','spear-mace'];

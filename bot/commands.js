@@ -1,24 +1,36 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { PermissionFlagsBits, SlashCommandBuilder } from 'discord.js';
 
-export const commands=[
- new SlashCommandBuilder().setName('rank').setDescription('Voir le rang WorldTiers').addStringOption(o=>o.setName('joueur').setDescription('Pseudo Minecraft').setRequired(true)),
- new SlashCommandBuilder().setName('top').setDescription('Voir le top WorldTiers').addStringOption(o=>o.setName('mode').setDescription('Mode : sword, mace, vanilla…')),
- new SlashCommandBuilder().setName('profil').setDescription('Ouvrir un profil WorldTiers').addStringOption(o=>o.setName('joueur').setDescription('Pseudo Minecraft').setRequired(true)),
- new SlashCommandBuilder().setName('ticket').setDescription('Ouvrir un ticket staff').addStringOption(o=>o.setName('sujet').setDescription('Ta demande').setRequired(true)),
- new SlashCommandBuilder().setName('close').setDescription('Fermer ce ticket'),
- new SlashCommandBuilder().setName('link').setDescription('Lier ton Discord à ton profil Minecraft').addStringOption(o=>o.setName('joueur').setDescription('Pseudo WorldTiers').setRequired(true)),
- new SlashCommandBuilder().setName('unlink').setDescription('Retirer la liaison Discord d’un joueur').setDefaultMemberPermissions(PermissionFlagsBits.Administrator).addUserOption(o=>o.setName('joueur').setDescription('Compte Discord à délier').setRequired(true)),
- new SlashCommandBuilder().setName('testermodes').setDescription('Choisir les modes que tu peux tester').addStringOption(o=>o.setName('modes').setDescription('Ex. sword,mace,crystal').setRequired(true)),
- new SlashCommandBuilder().setName('tierpanel').setDescription('Créer un panneau de file pour tes tests').addStringOption(o=>o.setName('modes').setDescription('Ex. mace,sword').setRequired(true)),
- new SlashCommandBuilder().setName('tierrequest').setDescription('Entrer dans la file pour un test de tier').addStringOption(o=>o.setName('mode').setDescription('Mode à tester').setRequired(true)),
- new SlashCommandBuilder().setName('testaccept').setDescription('Valider un tier dans un salon de test').addStringOption(o=>o.setName('tier').setDescription('HT1, LT1, HT2…').setRequired(true)),
- new SlashCommandBuilder().setName('testreject').setDescription('Refuser ou annuler un test').addStringOption(o=>o.setName('raison').setDescription('Raison').setRequired(true)),
- new SlashCommandBuilder().setName('rolesync').setDescription('Synchroniser ton rôle Testeur avec WorldTiers'),
- new SlashCommandBuilder().setName('setup').setDescription('Configurer le bot').setDefaultMemberPermissions(PermissionFlagsBits.Administrator).addChannelOption(o=>o.setName('annonces').setDescription('Salon mises à jour').setRequired(true)).addChannelOption(o=>o.setName('bienvenue').setDescription('Salon bienvenue')).addChannelOption(o=>o.setName('tickets').setDescription('Catégorie tickets')).addRoleOption(o=>o.setName('staff').setDescription('Rôle staff tickets')),
- new SlashCommandBuilder().setName('testconfig').setDescription('Configurer les tests de tiers').setDefaultMemberPermissions(PermissionFlagsBits.Administrator).addChannelOption(o=>o.setName('file').setDescription('Salon de la file de tests').setRequired(true)).addChannelOption(o=>o.setName('categorie').setDescription('Catégorie des salons privés de test').setRequired(true)).addRoleOption(o=>o.setName('testeurs').setDescription('Rôle Discord des testeurs').setRequired(true)),
- new SlashCommandBuilder().setName('testsetup').setDescription('Ajouter un joueur à la file de test').addChannelOption(o=>o.setName('file').setDescription('Salon de la file de tests').setRequired(true)).addStringOption(o=>o.setName('mode').setDescription('Mode à tester : sword, mace…').setRequired(true)).addUserOption(o=>o.setName('joueur').setDescription('Joueur à placer dans la file').setRequired(true)),
- new SlashCommandBuilder().setName('announce').setDescription('Publier une mise à jour').setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild).addStringOption(o=>o.setName('message').setDescription('Message').setRequired(true)),
- new SlashCommandBuilder().setName('warn').setDescription('Avertir un membre').setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers).addUserOption(o=>o.setName('membre').setDescription('Membre').setRequired(true)).addStringOption(o=>o.setName('raison').setDescription('Raison').setRequired(true)),
- new SlashCommandBuilder().setName('kick').setDescription('Expulser un membre').setDefaultMemberPermissions(PermissionFlagsBits.KickMembers).addUserOption(o=>o.setName('membre').setDescription('Membre').setRequired(true)).addStringOption(o=>o.setName('raison').setDescription('Raison').setRequired(true)),
- new SlashCommandBuilder().setName('ban').setDescription('Bannir un membre').setDefaultMemberPermissions(PermissionFlagsBits.BanMembers).addUserOption(o=>o.setName('membre').setDescription('Membre').setRequired(true)).addStringOption(o=>o.setName('raison').setDescription('Raison').setRequired(true)),
-].map(command=>command.toJSON());
+const modes = [
+  ['crystal', 'Vanilla'], ['sword', 'Sword'], ['uhc', 'UHC'], ['nethpot', 'Neth Pot'], ['pot', 'Pot'],
+  ['smp', 'SMP'], ['axe', 'Axe'], ['diasmp', 'Dia SMP'], ['mace', 'Mace'], ['spear-mace', 'Spear Mace'],
+];
+const tierChoices = ['HT1', 'LT1', 'HT2', 'LT2', 'HT3', 'LT3', 'HT4', 'LT4', 'HT5', 'LT5'];
+const member = option => option.setName('membre').setDescription('Membre Discord').setRequired(true);
+
+export const commands = [
+  new SlashCommandBuilder().setName('setup').setDescription('Configurer le bot WorldTiers').setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addRoleOption(option => option.setName('testeurs').setDescription('Role des testeurs').setRequired(true))
+    .addChannelOption(option => option.setName('categorie_tests').setDescription('Categorie des salons de test'))
+    .addChannelOption(option => option.setName('categorie_tickets').setDescription('Categorie des tickets'))
+    .addRoleOption(option => option.setName('staff').setDescription('Role staff des tickets'))
+    .addChannelOption(option => option.setName('reports').setDescription('Salon des reports')),
+  new SlashCommandBuilder().setName('profil').setDescription('Voir le profil WorldTiers').addStringOption(option => option.setName('name').setDescription('Pseudo Minecraft').setRequired(true)),
+  new SlashCommandBuilder().setName('tier').setDescription('Voir les tiers WorldTiers d un joueur').addStringOption(option => option.setName('name').setDescription('Pseudo Minecraft').setRequired(true)),
+  new SlashCommandBuilder().setName('top').setDescription('Voir le classement WorldTiers').addStringOption(option => option.setName('mode').setDescription('Mode, sinon classement global').addChoices(...modes.map(([value, name]) => ({ name, value })))),
+  new SlashCommandBuilder().setName('site').setDescription('Ouvrir le site WorldTiers'),
+  new SlashCommandBuilder().setName('web').setDescription('Ouvrir le site WorldTiers'),
+  new SlashCommandBuilder().setName('vanilla').setDescription('Ouvrir le classement Vanilla'),
+  ...modes.map(([mode, label]) => new SlashCommandBuilder().setName(mode).setDescription(`Ouvrir le classement ${label}`).toJSON()),
+  new SlashCommandBuilder().setName('tierfille').setDescription('Creer une file d attente de test').addStringOption(option => option.setName('modes').setDescription('Exemple : mace,sword').setRequired(true)).addRoleOption(option => option.setName('role_ping').setDescription('Role a mentionner lors de la creation')),
+  new SlashCommandBuilder().setName('tieraccept').setDescription('Valider le tier dans un salon de test').addStringOption(option => option.setName('tier').setDescription('Tier valide').setRequired(true).addChoices(...tierChoices.map(tier => ({ name: tier, value: tier })))),
+  new SlashCommandBuilder().setName('tierrefuse').setDescription('Refuser ou annuler le test').addStringOption(option => option.setName('raison').setDescription('Raison').setRequired(true)),
+  new SlashCommandBuilder().setName('ticket').setDescription('Gerer les tickets')
+    .addSubcommand(sub => sub.setName('create').setDescription('Creer un ticket').addStringOption(option => option.setName('sujet').setDescription('Sujet du ticket').setRequired(true)))
+    .addSubcommand(sub => sub.setName('add').setDescription('Ajouter une personne au ticket').addUserOption(member))
+    .addSubcommand(sub => sub.setName('kick').setDescription('Retirer une personne du ticket').addUserOption(member))
+    .addSubcommand(sub => sub.setName('ferme').setDescription('Fermer le ticket actuel')),
+  new SlashCommandBuilder().setName('reporte').setDescription('Signaler un membre au staff').addUserOption(member).addStringOption(option => option.setName('raison').setDescription('Raison du report').setRequired(true)),
+  new SlashCommandBuilder().setName('ban').setDescription('Bannir un membre').setDefaultMemberPermissions(PermissionFlagsBits.BanMembers).addUserOption(member).addStringOption(option => option.setName('raison').setDescription('Raison').setRequired(true)),
+  new SlashCommandBuilder().setName('kick').setDescription('Expulser un membre').setDefaultMemberPermissions(PermissionFlagsBits.KickMembers).addUserOption(member).addStringOption(option => option.setName('raison').setDescription('Raison').setRequired(true)),
+  new SlashCommandBuilder().setName('mute').setDescription('Rendre un membre muet temporairement').setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers).addUserOption(member).addIntegerOption(option => option.setName('minutes').setDescription('Duree en minutes, maximum 10080').setRequired(true).setMinValue(1).setMaxValue(10080)).addStringOption(option => option.setName('raison').setDescription('Raison').setRequired(true)),
+].map(command => typeof command.toJSON === 'function' ? command.toJSON() : command);

@@ -1,61 +1,291 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, EmbedBuilder, GatewayIntentBits, PermissionFlagsBits } from 'discord.js';
+import {
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, EmbedBuilder,
+  GatewayIntentBits, ModalBuilder, PermissionFlagsBits, TextInputBuilder, TextInputStyle,
+} from 'discord.js';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Node lancé par Pterodactyl/ts-node ne reçoit pas toujours --env-file.
-// Charge donc .env quand il est présent, sans écraser les vraies variables du panel.
 try { process.loadEnvFile?.('.env'); } catch {}
 
-const root=dirname(dirname(fileURLToPath(import.meta.url))),file=join(root,'data','discord-bot.json');
-const api=(process.env.WORLDTIERS_API_URL||'https://worldtiers.ddns.net/api').replace(/\/$/,'');
-const modes=['crystal','sword','uhc','nethpot','pot','smp','axe','diasmp','mace','spear-mace'];
-const tiers=['HT1','LT1','HT2','LT2','HT3','LT3','HT4','LT4','HT5','LT5'];
-let settings={};try{settings=JSON.parse(await readFile(file,'utf8'))}catch{}
-const cfg=id=>{const config=settings[id]||={};config.links||={};config.pendingLinks||={};config.testerModes||={};config.requests||={};config.panels||={};return config;},save=async()=>{await mkdir(dirname(file),{recursive:true});await writeFile(file,JSON.stringify(settings,null,2));};
-const embed=(title,description,color=0x45b8ff)=>new EmbedBuilder().setColor(color).setTitle(title).setDescription(description).setTimestamp().setFooter({text:'WorldTiers'});
-const botPost=(path,body)=>fetch(`${api}${path}`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${process.env.BOT_API_SECRET||''}`},body:JSON.stringify(body)});
-const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers]});
-const tester=async(member,config)=>Boolean(config.testerRole&&member.roles.cache.has(config.testerRole));
-const requestForChannel=(config,id)=>Object.values(config.requests||{}).find(request=>request.testChannelId===id&&request.state==='testing');
-const panelEmbed=panel=>embed('Tiers · File de test',`**Testeur :** <@${panel.testerId}>\n**Modes :** ${panel.modes.map(mode=>`\`${mode}\``).join(' ')}\n\n**File d’attente**\n${[0,1,2,3,4].map(index=>`${index+1}. ${panel.users[index]?`<@${panel.users[index]}>`:'—'}`).join('\n')}`,0x9b6cff);
+const root = dirname(fileURLToPath(import.meta.url));
+const storageFile = join(root, 'discord-bot.json');
+const api = (process.env.WORLDTIERS_API_URL || 'https://worldtiers.ddns.net/api').replace(/\/$/, '');
+const siteUrl = api.replace(/\/api$/, '');
+const modes = ['crystal', 'sword', 'uhc', 'nethpot', 'pot', 'smp', 'axe', 'diasmp', 'mace', 'spear-mace'];
+const tiers = new Set(['HT1', 'LT1', 'HT2', 'LT2', 'HT3', 'LT3', 'HT4', 'LT4', 'HT5', 'LT5']);
+const modeLabels = {
+  crystal: '💎 Vanilla', sword: '⚔️ Sword', uhc: '❤️ UHC', nethpot: '🟣 Neth Pot',
+  pot: '⚗️ Pot', smp: '🟢 SMP', axe: '🪓 Axe', diasmp: '🌙 Dia SMP',
+  mace: '🔨 Mace', 'spear-mace': '🗡️ Spear Mace',
+};
 
-async function syncDiscordRole(member,config){
- const username=config.links?.[member.id];if(!username||!config.testerRole||!process.env.BOT_API_SECRET)return;
- await botPost('/bot/roles',{username,role:'tester',enabled:member.roles.cache.has(config.testerRole)});
+let database = {};
+try { database = JSON.parse(await readFile(storageFile, 'utf8')); } catch {}
+const configFor = guildId => {
+  database[guildId] ||= { panels: {}, tests: {} };
+  database[guildId].panels ||= {};
+  database[guildId].tests ||= {};
+  database[guildId].tickets ||= {};
+  return database[guildId];
+};
+const save = async () => { await mkdir(root, { recursive: true }); await writeFile(storageFile, JSON.stringify(database, null, 2)); };
+const validMinecraftName = name => /^[a-zA-Z0-9_]{3,16}$/.test(name);
+const id = () => crypto.randomUUID();
+const isTester = (member, config) => Boolean(config.testerRoleId && member.roles.cache.has(config.testerRoleId));
+const isAdmin = member => member.permissions.has(PermissionFlagsBits.Administrator);
+const worldTiersEmbed = (title, description, color = 0x5865f2) => new EmbedBuilder().setColor(color).setTitle(title).setDescription(description).setFooter({ text: 'WorldTiers • Tests PvP' }).setTimestamp();
+
+function queueEmbed(panel) {
+  const lines = [0, 1, 2, 3, 4].map(index => {
+    const player = panel.players[index];
+    return `${index + 1}. ${player ? `<@${player.discordId}> — **${player.minecraftName}**` : '—'}`;
+  });
+  return worldTiersEmbed(
+    'Tier test',
+    `**Testeurs :** <@${panel.testerId}>\n**Modes :** ${panel.modes.map(mode => modeLabels[mode]).join(' • ')}\n\n**File d’attente**\n${lines.join('\n')}\n\nClique sur **Rejoindre** puis remplis le formulaire.`,
+    0x9b6cff,
+  );
 }
-client.once('ready',()=>{console.log(`WorldTiers Bot connecté : ${client.user.tag}`);syncSiteRoles();setInterval(syncSiteRoles,30000);});
-client.on('guildMemberAdd',async member=>{const config=cfg(member.guild.id),channel=await member.guild.channels.fetch(config.welcome).catch(()=>null);if(channel?.isTextBased())channel.send({embeds:[embed('Bienvenue !',`Bienvenue ${member} ! Utilise **/link** puis **/tierrequest** pour demander un test.`)]});});
-client.on('guildMemberUpdate',(_,member)=>syncDiscordRole(member,cfg(member.guild.id)).catch(console.error));
 
-async function syncSiteRoles(){
- for(const guild of client.guilds.cache.values())try{const config=cfg(guild.id);if(process.env.BOT_API_SECRET){const response=await botPost('/bot/links',{}),data=await response.json();if(response.ok){config.links=Object.fromEntries(data.links.map(link=>[link.discord_id,link.username]));for(const [discordId,username] of Object.entries(config.pendingLinks)){if(config.links[discordId]!==username)continue;const member=await guild.members.fetch(discordId).catch(()=>null);await member?.send({embeds:[embed('Compte WorldTiers lié !',`Ton Discord est maintenant lié avec succès à **${username}**.`,0x57f287)]}).catch(()=>{});delete config.pendingLinks[discordId];await save();}}}if(!config.testerRole)continue;const players=await (await fetch(`${api}/players`)).json();for(const [discordId,username] of Object.entries(config.links||{})){const member=await guild.members.fetch(discordId).catch(()=>null),player=players.find(item=>item.username.toLowerCase()===username.toLowerCase());if(!member||!player)continue;const enabled=(player.roles||[]).includes('tester'),has=member.roles.cache.has(config.testerRole);if(enabled&&!has)await member.roles.add(config.testerRole,'Rôle Testeur WorldTiers');if(!enabled&&has)await member.roles.remove(config.testerRole,'Synchronisation WorldTiers');}}catch(error){console.error('Synchronisation des rôles:',error.message)}
+function queueButtons(panel) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`wtq:join:${panel.id}`).setLabel(`Rejoindre (${panel.players.length}/5)`).setEmoji('➕').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`wtq:leave:${panel.id}`).setLabel('Quitter').setEmoji('➖').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`wtq:start:${panel.id}`).setLabel('Prendre le premier test').setEmoji('▶️').setStyle(ButtonStyle.Success).setDisabled(panel.players.length === 0),
+  );
 }
 
-client.on('interactionCreate',async interaction=>{
- try{
-  if(interaction.isButton()){
-   if(interaction.customId.startsWith('wt_queue_')){const config=cfg(interaction.guild.id),id=interaction.customId.slice('wt_queue_'.length),panel=config.panels?.[id];if(!panel)return interaction.reply({content:'Ce panneau n’existe plus.',ephemeral:true});if(!config.links[interaction.user.id])return interaction.reply({content:'Lie d’abord ton profil Minecraft avec `/link <pseudo>`.',ephemeral:true});if(panel.users.includes(interaction.user.id))return interaction.reply({content:'Tu es déjà dans cette file.',ephemeral:true});if(panel.users.length>=5)return interaction.reply({content:'La file est complète.',ephemeral:true});panel.users.push(interaction.user.id);await save();return interaction.update({embeds:[panelEmbed(panel)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`wt_queue_${id}`).setLabel(`Entrer dans la file (${panel.users.length}/5)`).setStyle(ButtonStyle.Primary))]});}
-   if(!interaction.customId.startsWith('wt_claim_'))return;const config=cfg(interaction.guild.id),id=interaction.customId.slice('wt_claim_'.length),request=config.requests?.[id];if(!request||request.state!=='queued')return interaction.reply({content:'Cette demande n’est plus disponible.',ephemeral:true});const member=await interaction.guild.members.fetch(interaction.user.id);if(!await tester(member,config))return interaction.reply({content:'Seuls les testeurs peuvent prendre une demande.',ephemeral:true});if(!(config.testerModes?.[interaction.user.id]||[]).includes(request.mode))return interaction.reply({content:`Choisis d’abord ce mode avec /testermodes : ${request.mode}`,ephemeral:true});
-   const overwrites=[{id:interaction.guild.id,deny:[PermissionFlagsBits.ViewChannel]},{id:request.userId,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]},{id:interaction.user.id,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]}];if(config.staff)overwrites.push({id:config.staff,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]});const channel=await interaction.guild.channels.create({name:`test-${request.mode}-${request.username}`.toLowerCase().replace(/[^a-z0-9-]/g,''),type:ChannelType.GuildText,parent:config.testCategory||undefined,permissionOverwrites:overwrites});request.state='testing';request.testerId=interaction.user.id;request.testerName=interaction.user.username;request.testChannelId=channel.id;await save();await channel.send({content:`<@${request.userId}> <@${request.testerId}>`,embeds:[embed(`Test ${request.mode}`,`**Joueur :** ${request.username}\n**Testeur :** ${interaction.user.username}\nÀ la fin : `/testaccept <tier>` ou `/testreject <raison>`.`)]});return interaction.update({embeds:[embed(`Demande prise · ${request.mode}`,`${request.username} est maintenant testé par ${interaction.user}.`,0x57f287)],components:[]});
+async function refreshPanel(guild, panel) {
+  const channel = await guild.channels.fetch(panel.channelId).catch(() => null);
+  const message = channel?.isTextBased() ? await channel.messages.fetch(panel.messageId).catch(() => null) : null;
+  await message?.edit({ embeds: [queueEmbed(panel)], components: [queueButtons(panel)] });
+}
+
+async function createTestChannel(interaction, config, panel) {
+  const player = panel.players.shift();
+  const overwrites = [
+    { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: player.discordId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+    { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+  ];
+  const channel = await interaction.guild.channels.create({
+    name: `test-${panel.modes.join('-')}-${player.minecraftName}`.toLowerCase().replace(/[^a-z0-9-]/g, ''),
+    type: ChannelType.GuildText,
+    parent: config.testCategoryId || undefined,
+    permissionOverwrites: overwrites,
+  });
+  config.tests[channel.id] = { player, testerId: interaction.user.id, modes: panel.modes, panelId: panel.id, createdAt: new Date().toISOString() };
+  await save();
+  await channel.send({
+    content: `<@${player.discordId}> <@${interaction.user.id}>`,
+    embeds: [worldTiersEmbed('Test de tier ouvert', `**Joueur Discord :** <@${player.discordId}>\n**Joueur Minecraft :** **${player.minecraftName}**\n**Testeur :** <@${interaction.user.id}>\n**Modes :** ${panel.modes.map(mode => modeLabels[mode]).join(' • ')}\n\nÀ la fin, le testeur utilise `/tieraccept` ou `/tierrefuse`.`)],
+  });
+  await refreshPanel(interaction.guild, panel);
+  return channel;
+}
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+client.once('ready', () => console.log(`WorldTiers Bot connecté : ${client.user.tag}`));
+
+client.on('interactionCreate', async interaction => {
+  try {
+    if (!interaction.guild) return;
+    const config = configFor(interaction.guild.id);
+
+    if (interaction.isButton()) {
+      const [namespace, action, panelId] = interaction.customId.split(':');
+      if (namespace !== 'wtq') return;
+      const panel = config.panels[panelId];
+      if (!panel) return interaction.reply({ content: 'Cette file n’existe plus.', ephemeral: true });
+
+      if (action === 'join') {
+        if (panel.players.some(player => player.discordId === interaction.user.id)) return interaction.reply({ content: 'Tu es déjà dans cette file.', ephemeral: true });
+        if (panel.players.length >= 5) return interaction.reply({ content: 'La file est complète.', ephemeral: true });
+        const modal = new ModalBuilder().setCustomId(`wtqform:${panel.id}`).setTitle('Rejoindre la file de test');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('discord_name').setLabel('Ton pseudo Discord').setStyle(TextInputStyle.Short).setValue(interaction.user.username).setRequired(true).setMaxLength(32)),
+          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('minecraft_name').setLabel('Ton pseudo Minecraft').setStyle(TextInputStyle.Short).setPlaceholder('Ex. belyxzor').setRequired(true).setMinLength(3).setMaxLength(16)),
+        );
+        return interaction.showModal(modal);
+      }
+
+      if (action === 'leave') {
+        const count = panel.players.length;
+        panel.players = panel.players.filter(player => player.discordId !== interaction.user.id);
+        if (count === panel.players.length) return interaction.reply({ content: 'Tu n’es pas dans cette file.', ephemeral: true });
+        await save();
+        return interaction.update({ embeds: [queueEmbed(panel)], components: [queueButtons(panel)] });
+      }
+
+      if (action === 'start') {
+        const member = await interaction.guild.members.fetch(interaction.user.id);
+        if (!isTester(member, config)) return interaction.reply({ content: 'Seuls les testeurs peuvent prendre un test.', ephemeral: true });
+        if (panel.testerId !== interaction.user.id && !isAdmin(member)) return interaction.reply({ content: 'Seul le testeur qui a créé cette file peut prendre ses joueurs.', ephemeral: true });
+        if (!panel.players.length) return interaction.reply({ content: 'La file est vide.', ephemeral: true });
+        const channel = await createTestChannel(interaction, config, panel);
+        return interaction.reply({ content: `Salon de test créé : ${channel}`, ephemeral: true });
+      }
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('wtqform:')) {
+      const panel = config.panels[interaction.customId.slice('wtqform:'.length)];
+      if (!panel) return interaction.reply({ content: 'Cette file n’existe plus.', ephemeral: true });
+      const discordName = interaction.fields.getTextInputValue('discord_name').trim();
+      const minecraftName = interaction.fields.getTextInputValue('minecraft_name').trim();
+      if (!validMinecraftName(minecraftName)) return interaction.reply({ content: 'Pseudo Minecraft invalide : 3 à 16 caractères, seulement lettres, chiffres et _.', ephemeral: true });
+      if (panel.players.some(player => player.discordId === interaction.user.id)) return interaction.reply({ content: 'Tu es déjà dans cette file.', ephemeral: true });
+      if (panel.players.length >= 5) return interaction.reply({ content: 'La file est complète.', ephemeral: true });
+      panel.players.push({ discordId: interaction.user.id, discordName, minecraftName });
+      await save();
+      await refreshPanel(interaction.guild, panel);
+      return interaction.reply({ content: `Tu es dans la file avec le pseudo Minecraft **${minecraftName}**.`, ephemeral: true });
+    }
+
+    if (!interaction.isChatInputCommand()) return;
+    if (interaction.commandName === 'setup') {
+      config.testerRoleId = interaction.options.getRole('testeurs', true).id;
+      config.testCategoryId = interaction.options.getChannel('categorie_tests')?.id || null;
+      config.ticketCategoryId = interaction.options.getChannel('categorie_tickets')?.id || null;
+      config.staffRoleId = interaction.options.getRole('staff')?.id || null;
+      config.reportChannelId = interaction.options.getChannel('reports')?.id || null;
+      await save();
+      return interaction.reply({ embeds: [worldTiersEmbed('Bot WorldTiers configuré', `**Testeurs :** <@&${config.testerRoleId}>\n**Staff :** ${config.staffRoleId ? `<@&${config.staffRoleId}>` : 'non configuré'}\n**Reports :** ${config.reportChannelId ? `<#${config.reportChannelId}>` : 'non configuré'}`)], ephemeral: true });
+    }
+
+    if (interaction.commandName === 'site' || interaction.commandName === 'web' || interaction.commandName === 'vanilla' || modes.includes(interaction.commandName)) {
+      const mode = interaction.commandName === 'vanilla' ? 'crystal' : interaction.commandName;
+      const url = modes.includes(mode) ? `${siteUrl}/mode/${mode}` : siteUrl;
+      const label = modes.includes(mode) ? `Classement ${modeLabels[mode]}` : 'Site officiel WorldTiers';
+      return interaction.reply({ embeds: [worldTiersEmbed(label, `[Ouvrir la page](${url})`).setURL(url)] });
+    }
+
+    if (interaction.commandName === 'profil' || interaction.commandName === 'tier') {
+      const username = interaction.options.getString('name', true).trim();
+      const response = await fetch(`${api}/user/${encodeURIComponent(username)}`);
+      const player = await response.json().catch(() => ({}));
+      if (!response.ok) return interaction.reply({ content: 'Joueur WorldTiers introuvable.', ephemeral: true });
+      const entries = Object.entries(player.tiers || {}).map(([mode, tier]) => `${modeLabels[mode] || mode} **${tier}**`).join('\n') || 'Aucun tier validé.';
+      const url = `${siteUrl}/player/${encodeURIComponent(player.username)}`;
+      const title = interaction.commandName === 'tier' ? `Tiers de ${player.username}` : `Profil WorldTiers — ${player.username}`;
+      const description = interaction.commandName === 'tier' ? `${entries}\n\n[Voir le profil complet](${url})` : `**Rang :** #${player.rank || 'N/A'} • **${player.points || 0} points**\n**Région :** ${player.region || 'N/A'}\n\n${entries}\n\n[Ouvrir le profil](${url})`;
+      return interaction.reply({ embeds: [worldTiersEmbed(title, description).setURL(url)] });
+    }
+
+    if (interaction.commandName === 'top') {
+      const mode = interaction.options.getString('mode');
+      const response = await fetch(`${api}/${mode || 'top100'}`);
+      const players = await response.json().catch(() => []);
+      if (!response.ok || !Array.isArray(players)) return interaction.reply({ content: 'Classement indisponible.', ephemeral: true });
+      const list = players.slice(0, 10).map((player, index) => `**${index + 1}.** [${player.username}](${siteUrl}/player/${encodeURIComponent(player.username)}) — ${mode ? player.tier || 'N/A' : `${player.points || 0} pts`}`).join('\n') || 'Aucun joueur classé.';
+      const url = mode ? `${siteUrl}/mode/${mode}` : `${siteUrl}/home`;
+      return interaction.reply({ embeds: [worldTiersEmbed(`Top ${mode ? modeLabels[mode] : 'WorldTiers'}`, `${list}\n\n[Voir le classement complet](${url})`).setURL(url)] });
+    }
+
+    if (interaction.commandName === 'reporte') {
+      const target = interaction.options.getUser('membre', true);
+      const reason = interaction.options.getString('raison', true);
+      const channel = config.reportChannelId && await interaction.guild.channels.fetch(config.reportChannelId).catch(() => null);
+      if (!channel?.isTextBased()) return interaction.reply({ content: 'Le salon des reports n’est pas configuré. Utilise /setup.', ephemeral: true });
+      await channel.send({ content: config.staffRoleId ? `<@&${config.staffRoleId}>` : '', allowedMentions: { roles: config.staffRoleId ? [config.staffRoleId] : [] }, embeds: [worldTiersEmbed('Nouveau report', `**Signalé par :** <@${interaction.user.id}>\n**Membre :** <@${target.id}>\n**Raison :** ${reason}`, 0xf4b942)] });
+      return interaction.reply({ content: 'Ton report a été envoyé au staff.', ephemeral: true });
+    }
+
+    if (interaction.commandName === 'ban' || interaction.commandName === 'kick' || interaction.commandName === 'mute') {
+      const target = interaction.options.getUser('membre', true);
+      const reason = interaction.options.getString('raison', true);
+      const targetMember = await interaction.guild.members.fetch(target.id).catch(() => null);
+      if (!targetMember) return interaction.reply({ content: 'Membre introuvable sur ce serveur.', ephemeral: true });
+      if (interaction.commandName === 'ban') await targetMember.ban({ reason });
+      if (interaction.commandName === 'kick') await targetMember.kick(reason);
+      if (interaction.commandName === 'mute') await targetMember.timeout(interaction.options.getInteger('minutes', true) * 60_000, reason);
+      const action = interaction.commandName === 'ban' ? 'banni' : interaction.commandName === 'kick' ? 'expulsé' : 'mute';
+      return interaction.reply({ embeds: [worldTiersEmbed(`Membre ${action}`, `${target} — ${reason}`, 0xed4245)] });
+    }
+
+    if (interaction.commandName === 'ticket') {
+      const subcommand = interaction.options.getSubcommand();
+      const currentTicket = config.tickets[interaction.channelId];
+      const member = await interaction.guild.members.fetch(interaction.user.id);
+      const staff = isAdmin(member) || Boolean(config.staffRoleId && member.roles.cache.has(config.staffRoleId));
+      if (subcommand === 'create') {
+        const subject = interaction.options.getString('sujet', true);
+        const overwrites = [{ id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] }, { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }];
+        if (config.staffRoleId) overwrites.push({ id: config.staffRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
+        const channel = await interaction.guild.channels.create({ name: `ticket-${interaction.user.username}`.toLowerCase().replace(/[^a-z0-9-]/g, ''), type: ChannelType.GuildText, parent: config.ticketCategoryId || undefined, permissionOverwrites: overwrites });
+        config.tickets[channel.id] = { ownerId: interaction.user.id, members: [interaction.user.id], createdAt: new Date().toISOString() }; await save();
+        await channel.send({ content: `${interaction.user}${config.staffRoleId ? ` <@&${config.staffRoleId}>` : ''}`, allowedMentions: { users: [interaction.user.id], roles: config.staffRoleId ? [config.staffRoleId] : [] }, embeds: [worldTiersEmbed('Ticket WorldTiers', `**Sujet :** ${subject}\nUtilise /ticket ferme quand le problème est résolu.`)] });
+        return interaction.reply({ content: `Ticket créé : ${channel}`, ephemeral: true });
+      }
+      if (!currentTicket) return interaction.reply({ content: 'Cette commande doit être utilisée dans un ticket WorldTiers.', ephemeral: true });
+      if (!staff && currentTicket.ownerId !== interaction.user.id) return interaction.reply({ content: 'Tu ne peux pas gérer ce ticket.', ephemeral: true });
+      if (subcommand === 'add') {
+        const target = interaction.options.getUser('membre', true);
+        await interaction.channel.permissionOverwrites.edit(target.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
+        if (!currentTicket.members.includes(target.id)) currentTicket.members.push(target.id); await save();
+        return interaction.reply({ content: `${target} a été ajouté au ticket.` });
+      }
+      if (subcommand === 'kick') {
+        if (!staff) return interaction.reply({ content: 'Seul le staff peut retirer quelqu’un du ticket.', ephemeral: true });
+        const target = interaction.options.getUser('membre', true);
+        if (target.id === currentTicket.ownerId) return interaction.reply({ content: 'Le créateur du ticket ne peut pas être retiré.', ephemeral: true });
+        await interaction.channel.permissionOverwrites.edit(target.id, { ViewChannel: false, SendMessages: false });
+        currentTicket.members = currentTicket.members.filter(userId => userId !== target.id); await save();
+        return interaction.reply({ content: `${target} a été retiré du ticket.` });
+      }
+      delete config.tickets[interaction.channelId]; await save();
+      await interaction.reply({ content: 'Ticket fermé dans 5 secondes.' });
+      return setTimeout(() => interaction.channel.delete('Ticket fermé').catch(() => {}), 5_000);
+    }
+    if (interaction.commandName === 'testconfig') {
+      config.testerRoleId = interaction.options.getRole('testeurs', true).id;
+      config.testCategoryId = interaction.options.getChannel('categorie')?.id || null;
+      await save();
+      return interaction.reply({ embeds: [worldTiersEmbed('Système de tests configuré', `Rôle Testeur : <@&${config.testerRoleId}>`)], ephemeral: true });
+    }
+
+    if (interaction.commandName === 'tierfille') {
+      const member = await interaction.guild.members.fetch(interaction.user.id);
+      if (!isTester(member, config)) return interaction.reply({ content: 'Tu dois avoir le rôle Discord Testeur.', ephemeral: true });
+      const selectedModes = [...new Set(interaction.options.getString('modes', true).toLowerCase().split(',').map(mode => mode.trim()).filter(mode => modes.includes(mode)))];
+      if (!selectedModes.length) return interaction.reply({ content: `Aucun mode valide. Choisis parmi : ${modes.join(', ')}`, ephemeral: true });
+      const rolePing = interaction.options.getRole('role_ping');
+      const panel = { id: id(), testerId: interaction.user.id, modes: selectedModes, players: [], channelId: interaction.channelId, messageId: null, rolePingId: rolePing?.id || null };
+      const message = await interaction.channel.send({ content: rolePing ? `<@&${rolePing.id}>` : '', allowedMentions: { roles: rolePing ? [rolePing.id] : [] }, embeds: [queueEmbed(panel)], components: [queueButtons(panel)] });
+      panel.messageId = message.id;
+      config.panels[panel.id] = panel;
+      await save();
+      return interaction.reply({ content: 'File de test créée.', ephemeral: true });
+    }
+
+    const test = config.tests[interaction.channelId];
+    if (interaction.commandName === 'tieraccept' || interaction.commandName === 'tierrefuse') {
+      if (!test) return interaction.reply({ content: 'Utilise cette commande dans un salon de test WorldTiers.', ephemeral: true });
+      const member = await interaction.guild.members.fetch(interaction.user.id);
+      if (test.testerId !== interaction.user.id && !isAdmin(member)) return interaction.reply({ content: 'Seul le testeur assigné peut terminer ce test.', ephemeral: true });
+      if (interaction.commandName === 'tierrefuse') {
+        const reason = interaction.options.getString('raison', true);
+        delete config.tests[interaction.channelId]; await save();
+        return interaction.reply({ embeds: [worldTiersEmbed('Test refusé', reason, 0xed4245)] });
+      }
+      const tier = interaction.options.getString('tier', true).toUpperCase();
+      if (!tiers.has(tier)) return interaction.reply({ content: 'Tier invalide.', ephemeral: true });
+      if (!process.env.BOT_API_SECRET) return interaction.reply({ content: 'BOT_API_SECRET manque dans le fichier .env du bot.', ephemeral: true });
+      const results = await Promise.all(test.modes.map(async mode => {
+        const response = await fetch(`${api}/bot/test-result`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.BOT_API_SECRET}` }, body: JSON.stringify({ username: test.player.minecraftName, mode_id: mode, tier, tester: interaction.user.username }) });
+        return { mode, ok: response.ok, body: await response.json().catch(() => ({})) };
+      }));
+      const failed = results.find(result => !result.ok);
+      if (failed) return interaction.reply({ content: failed.body.error || `Impossible de sauvegarder le tier ${failed.mode}.`, ephemeral: true });
+      delete config.tests[interaction.channelId]; await save();
+      return interaction.reply({ embeds: [worldTiersEmbed('Tier validé', `**${test.player.minecraftName}** obtient **${tier}** en ${test.modes.map(mode => modeLabels[mode]).join(' • ')}.`, 0x57f287)] });
+    }
+  } catch (error) {
+    console.error(error);
+    if (interaction.isRepliable() && !interaction.replied) await interaction.reply({ content: 'Erreur du bot. Vérifie ses permissions et réessaie.', ephemeral: true }).catch(() => {});
   }
-  if(!interaction.isChatInputCommand()||!interaction.guild)return;const config=cfg(interaction.guild.id),reply=payload=>interaction.reply({...payload,ephemeral:true});
-  if(interaction.commandName==='setup'){config.announcements=interaction.options.getChannel('annonces',true).id;config.welcome=interaction.options.getChannel('bienvenue')?.id||null;config.tickets=interaction.options.getChannel('tickets')?.id||null;config.staff=interaction.options.getRole('staff')?.id||null;await save();return reply({embeds:[embed('Bot configuré','Salons WorldTiers enregistrés.')]});}
-  if(interaction.commandName==='testconfig'){config.queue=interaction.options.getChannel('file',true).id;config.testCategory=interaction.options.getChannel('categorie',true).id;config.testerRole=interaction.options.getRole('testeurs',true).id;await save();return reply({embeds:[embed('Système de tests prêt','Les joueurs peuvent utiliser /tierrequest et les testeurs /testermodes.')]});}
-  if(interaction.commandName==='link'){const username=interaction.options.getString('joueur',true),response=await botPost('/bot/link/start',{username,discord_id:interaction.user.id}),data=await response.json();if(!response.ok)return reply({content:data.error||'Profil WorldTiers introuvable.'});config.pendingLinks[interaction.user.id]=username;await save();return reply({embeds:[embed('Confirmation Minecraft requise',`Connecte-toi avec **${username}** dans Minecraft, puis écris :\n\n\`/worldtiers link ${data.code}\`\n\nCe code expire dans 15 minutes.`,0xf4b942)]});}
-  if(interaction.commandName==='unlink'){const target=interaction.options.getUser('joueur',true),response=await botPost('/bot/link/remove',{discord_id:target.id}),data=await response.json();if(!response.ok)return reply({content:data.error||'Impossible de retirer la liaison.'});delete config.links[target.id];delete config.pendingLinks[target.id];await save();await target.send({embeds:[embed('Liaison WorldTiers retirée','Un administrateur a retiré la liaison entre ton Discord et ton compte Minecraft.',0xed4245)]}).catch(()=>{});return reply({content:`La liaison de ${target} a été retirée.`});}
-  if(interaction.commandName==='rolesync'){await syncDiscordRole(await interaction.guild.members.fetch(interaction.user.id),config);return reply({content:'Rôle Testeur synchronisé.'});}
-  if(interaction.commandName==='testermodes'){const member=await interaction.guild.members.fetch(interaction.user.id);if(!await tester(member,config))return reply({content:'Tu dois avoir le rôle Discord Testeur.'});const chosen=[...new Set(interaction.options.getString('modes',true).toLowerCase().split(',').map(mode=>mode.trim()).filter(mode=>modes.includes(mode)))];if(!chosen.length)return reply({content:`Aucun mode valide. Modes : ${modes.join(', ')}`});config.testerModes[interaction.user.id]=chosen;await save();return reply({embeds:[embed('Modes de test enregistrés',chosen.map(mode=>`• ${mode}`).join('\n'))]});}
-  if(interaction.commandName==='tierpanel'){const member=await interaction.guild.members.fetch(interaction.user.id);if(!await tester(member,config))return reply({content:'Tu dois avoir le rôle Discord Testeur pour créer une file.'});const selected=[...new Set(interaction.options.getString('modes',true).toLowerCase().split(',').map(mode=>mode.trim()).filter(mode=>modes.includes(mode)))];if(!selected.length)return reply({content:`Aucun mode valide. Modes : ${modes.join(', ')}`});const id=crypto.randomUUID(),panel={id,testerId:interaction.user.id,modes:selected,users:[]};const message=await interaction.channel.send({embeds:[panelEmbed(panel)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`wt_queue_${id}`).setLabel('Entrer dans la file (0/5)').setStyle(ButtonStyle.Primary))]});panel.messageId=message.id;panel.channelId=interaction.channelId;config.panels[id]=panel;await save();return reply({content:'Panneau de file créé dans ce salon.'});}
-  if(interaction.commandName==='testsetup'||interaction.commandName==='tierrequest'){let queueId=config.queue,playerId=interaction.user.id,username=config.links[playerId],mode=interaction.options.getString('mode',true).toLowerCase();if(interaction.commandName==='testsetup'){const member=await interaction.guild.members.fetch(interaction.user.id);if(!await tester(member,config))return reply({content:'Tu dois avoir le rôle Discord Testeur pour ajouter un joueur.'});queueId=interaction.options.getChannel('file',true).id;playerId=interaction.options.getUser('joueur',true).id;username=config.links[playerId];}if(!username)return reply({content:'Ce joueur doit d’abord lier son compte avec /link <pseudo>.'});if(!modes.includes(mode))return reply({content:`Mode invalide. Modes : ${modes.join(', ')}`});const queue=await interaction.guild.channels.fetch(queueId).catch(()=>null);if(!queue?.isTextBased())return reply({content:'Salon de file invalide.'});const id=crypto.randomUUID(),message=await queue.send({embeds:[embed(`Demande de test · ${mode}`,`**Joueur :** ${username}\nLes testeurs disponibles peuvent prendre cette demande.`)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`wt_claim_${id}`).setLabel('Prendre le test').setStyle(ButtonStyle.Primary))]});config.requests[id]={id,messageId:message.id,userId:playerId,username,mode,state:'queued',createdAt:new Date().toISOString()};await save();return reply({content:`La demande **${mode}** de **${username}** est dans la file d’attente.`});}
-  if(interaction.commandName==='testaccept'||interaction.commandName==='testreject'){const request=requestForChannel(config,interaction.channelId);if(!request)return reply({content:'Cette commande doit être utilisée dans un salon de test actif.'});const member=await interaction.guild.members.fetch(interaction.user.id);if(interaction.user.id!==request.testerId&&!await tester(member,config))return reply({content:'Seul le testeur assigné peut terminer ce test.'});if(interaction.commandName==='testreject'){request.state='rejected';request.reason=interaction.options.getString('raison',true);await save();return interaction.reply({embeds:[embed('Test refusé',request.reason,0xed4245)]});}const tier=interaction.options.getString('tier',true).toUpperCase();if(!tiers.includes(tier))return reply({content:`Tier invalide : ${tiers.join(', ')}`});const response=await botPost('/bot/test-result',{username:request.username,mode_id:request.mode,tier,tester:interaction.user.username}),data=await response.json();if(!response.ok)return reply({content:data.error||'Impossible de valider le tier.'});request.state='validated';request.tier=tier;await save();return interaction.reply({embeds:[embed('Tier validé',`**${request.username}** obtient **${tier}** en ${request.mode}. Total : **${data.points} pts**`,0x57f287)]});}
-  if(['rank','profil'].includes(interaction.commandName)){const name=interaction.options.getString('joueur',true),r=await fetch(`${api}/user/${encodeURIComponent(name)}`),p=await r.json();if(!r.ok)return reply({content:'Joueur introuvable.'});const list=Object.entries(p.tiers||{}).map(([mode,tier])=>`• ${mode} : **${tier}**`).join('\n')||'Aucun tier validé.';return reply({embeds:[embed(`${p.username} · #${p.rank}`,`**${p.points} points** · ${p.region}\n${list}`).setURL(`${api.replace(/\/api$/,'')}/player/${encodeURIComponent(p.username)}`)]});}
-  if(interaction.commandName==='top'){const mode=(interaction.options.getString('mode')||'top100').toLowerCase();if(mode!=='top100'&&!modes.includes(mode))return reply({content:'Mode invalide.'});const players=await (await fetch(`${api}/${mode}`)).json();return reply({embeds:[embed(`Top ${mode==='top100'?'global':mode}`,players.slice(0,10).map((p,i)=>`**${i+1}.** ${p.username} — ${p.points} pts`).join('\n')||'Aucun joueur classé.')]});}
-  if(interaction.commandName==='ticket'){const subject=interaction.options.getString('sujet',true),overwrites=[{id:interaction.guild.id,deny:[PermissionFlagsBits.ViewChannel]},{id:interaction.user.id,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]}];if(config.staff)overwrites.push({id:config.staff,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory]});const channel=await interaction.guild.channels.create({name:`ticket-${interaction.user.username}`.toLowerCase().replace(/[^a-z0-9-]/g,''),type:ChannelType.GuildText,parent:config.tickets||undefined,permissionOverwrites:overwrites});await channel.send({embeds:[embed('Ticket WorldTiers',`Créé par ${interaction.user}\n**Sujet :** ${subject}`)]});return reply({content:`Ticket créé : ${channel}`});}
-  if(interaction.commandName==='close'){if(!interaction.channel?.name.startsWith('ticket-'))return reply({content:'Cette commande doit être utilisée dans un ticket.'});await reply({content:'Fermeture dans 5 secondes.'});return setTimeout(()=>interaction.channel.delete('Ticket fermé').catch(()=>{}),5000);}
-  if(interaction.commandName==='announce'){const message=interaction.options.getString('message',true),channel=config.announcements&&await interaction.guild.channels.fetch(config.announcements).catch(()=>null);if(!channel?.isTextBased())return reply({content:'Utilise /setup pour choisir le salon des annonces.'});await channel.send({embeds:[embed('Mise à jour WorldTiers',message)]});if(process.env.BOT_API_SECRET)await botPost('/bot/announcement',{message,author:interaction.user.username});return reply({content:'Annonce publiée.'});}
-  if(['warn','kick','ban'].includes(interaction.commandName)){const user=interaction.options.getUser('membre',true),reason=interaction.options.getString('raison',true),member=await interaction.guild.members.fetch(user.id).catch(()=>null);if(interaction.commandName==='warn')return reply({embeds:[embed('Avertissement',`${user} — ${reason}`,0xf4b942)]});if(!member)return reply({content:'Membre introuvable.'});if(interaction.commandName==='kick')await member.kick(reason);else await member.ban({reason});return reply({embeds:[embed(interaction.commandName==='ban'?'Membre banni':'Membre expulsé',`${user} — ${reason}`,0xed4245)]});}
- }catch(error){console.error(error);if(interaction.isRepliable()&&!interaction.replied)interaction.reply({content:'Une erreur est survenue. Vérifie les permissions et la configuration.',ephemeral:true}).catch(()=>{});}
 });
-if(!process.env.DISCORD_TOKEN)throw new Error('DISCORD_TOKEN manquant dans .env');
+
+if (!process.env.DISCORD_TOKEN) throw new Error('DISCORD_TOKEN manquant dans .env');
 client.login(process.env.DISCORD_TOKEN);
